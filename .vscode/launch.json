@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "运行文件扫描器（项目根目录）",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/file_scanner.exe",
+            "args": [
+                ".",
+                "4"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "F:\\msys64\\ucrt64\\bin;F:\\msys64\\usr\\bin;${env:PATH}"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "F:/msys64/ucrt64/bin/gdb.exe",
+            "preLaunchTask": "C/C++: PowerShell 构建文件扫描器"
+        }
+    ]
+}

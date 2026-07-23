@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | `01-build-success.png` | CMake + Ninja 构建成功 | 已完成 | 2026-07-23 |
 | `02-basic-scan.png` | 基础目录扫描 | 已完成 | 2026-07-23 |
-| `03-multithread-scan.png` | 多线程扫描和进度 | 待开发 | - |
+| `03-multithread-scan.png` | 多线程扫描和线程池回归验证 | 已完成 | 2026-07-23 |
 | `04-filtered-scan.png` | 扩展名或大小过滤 | 待开发 | - |
 | `05-csv-export.png` | CSV 结果导出 | 待开发 | - |
 | `06-performance-test.png` | 单线程/多线程性能对比 | 待开发 | - |

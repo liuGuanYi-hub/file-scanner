@@ -8,7 +8,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(file_scanner
     src/main.cpp
+    src/thread_pool.cpp
 )
+
+target_include_directories(file_scanner PRIVATE include)
 
 if (MSVC)
     target_compile_options(file_scanner PRIVATE /W4 /permissive-)

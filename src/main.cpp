@@ -1,18 +1,19 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <map>
 #include <mutex>
-#include <queue>
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <vector>
+#include <utility>
+
+#include "thread_pool.h"
 
 namespace fs = std::filesystem;
 
@@ -23,49 +24,6 @@ std::string display_path(const fs::path& path) {
         return "<无法显示的路径>";
     }
 }
-
-class FileQueue {
-public:
-    void push(fs::path path) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (closed_) {
-                throw std::logic_error("cannot push to a closed queue");
-            }
-            queue_.push(std::move(path));
-        }
-        condition_.notify_one();
-    }
-
-    bool wait_pop(fs::path& path) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        condition_.wait(lock, [this] {
-            return closed_ || !queue_.empty();
-        });
-
-        if (queue_.empty()) {
-            return false;
-        }
-
-        path = std::move(queue_.front());
-        queue_.pop();
-        return true;
-    }
-
-    void close() {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            closed_ = true;
-        }
-        condition_.notify_all();
-    }
-
-private:
-    std::queue<fs::path> queue_;
-    std::mutex mutex_;
-    std::condition_variable condition_;
-    bool closed_ = false;
-};
 
 struct ScanStats {
     std::atomic<std::uint64_t> file_count{0};
@@ -154,27 +112,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    FileQueue queue;
+    ThreadPool thread_pool(worker_count);
     ScanStats stats;
-    std::vector<std::thread> workers;
-    workers.reserve(worker_count);
 
     const auto start_time = std::chrono::steady_clock::now();
-
-    for (std::size_t i = 0; i < worker_count; ++i) {
-        workers.emplace_back([&queue, &stats] {
-            fs::path file;
-            while (queue.wait_pop(file)) {
-                std::error_code file_error;
-                const std::uintmax_t size = fs::file_size(file, file_error);
-                if (file_error) {
-                    stats.error_count.fetch_add(1, std::memory_order_relaxed);
-                    continue;
-                }
-                stats.record_file(file, size);
-            }
-        });
-    }
 
     std::error_code iterator_error;
     const auto iterator_options = fs::directory_options::skip_permission_denied;
@@ -190,7 +131,16 @@ int main(int argc, char* argv[]) {
         std::error_code entry_error;
         if (it->is_regular_file(entry_error)) {
             try {
-                queue.push(it->path());
+                fs::path file = it->path();
+                thread_pool.enqueue([file = std::move(file), &stats] {
+                    std::error_code file_error;
+                    const std::uintmax_t size = fs::file_size(file, file_error);
+                    if (file_error) {
+                        stats.error_count.fetch_add(1, std::memory_order_relaxed);
+                        return;
+                    }
+                    stats.record_file(file, size);
+                });
             } catch (const std::exception&) {
                 stats.error_count.fetch_add(1, std::memory_order_relaxed);
             }
@@ -203,10 +153,7 @@ int main(int argc, char* argv[]) {
         stats.error_count.fetch_add(1, std::memory_order_relaxed);
     }
 
-    queue.close();
-    for (std::thread& worker : workers) {
-        worker.join();
-    }
+    thread_pool.shutdown();
 
     const auto end_time = std::chrono::steady_clock::now();
     const auto elapsed = std::chrono::duration<double>(end_time - start_time).count();

@@ -9,6 +9,7 @@
 - 递归扫描目录
 - 多线程文件处理
 - 线程安全任务队列
+- 独立 `ThreadPool` 线程池模块
 - 文件数量、总大小和错误数统计
 - 文件扩展名统计
 - C++17 + CMake + Ninja 构建
@@ -38,6 +39,10 @@
 
 ![基础目录扫描结果](docs/screenshots/02-basic-scan.png)
 
+### 线程池回归验证
+
+![线程池多线程扫描结果](docs/screenshots/03-multithread-scan.png)
+
 ## 项目结构
 
 ```text
@@ -48,9 +53,13 @@
 │   └── screenshots/
 │       ├── README.md
 │       ├── 01-build-success.png
-│       └── 02-basic-scan.png
+│       ├── 02-basic-scan.png
+│       └── 03-multithread-scan.png
+├── include/
+│   └── thread_pool.h
 ├── src/
-│   └── main.cpp
+│   ├── main.cpp
+│   └── thread_pool.cpp
 ├── CMakeLists.txt
 ├── README.md
 └── .gitignore
@@ -92,6 +101,7 @@ cmake --build build
 当前实现重点体现：
 
 - 生产者-消费者模型
+- 独立线程池和通用 `enqueue()` 任务提交接口
 - 互斥锁和条件变量
 - 原子计数器
 - `std::filesystem` 错误码处理
@@ -116,6 +126,7 @@ cmake --build build
 - 错误数为 0
 - 多线程参数可用
 - 中文非法目录能够返回可读错误并以退出码 1 结束
+- 1、4、64 线程扫描结果一致
 
 ## 开发计划与截图规范
 
@@ -135,9 +146,8 @@ cmake --build build
 
 ## 后续路线
 
-1. 抽离独立线程池模块。
-2. 增加任务队列容量限制和优雅退出。
-3. 增加扩展名、大小和时间过滤。
-4. 增加日志、CSV 导出和配置参数。
-5. 增加单线程/多线程性能对比。
-6. 后续扩展 GUI、数据库、网络和 Windows API 能力。
+1. 增加任务队列容量限制和优雅退出。
+2. 增加扩展名、大小和时间过滤。
+3. 增加日志、CSV 导出和配置参数。
+4. 增加单线程/多线程性能对比。
+5. 后续扩展 GUI、数据库、网络和 Windows API 能力。
