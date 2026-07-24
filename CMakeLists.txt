@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(scan_core STATIC
+    src/error_logger.cpp
     src/scan_engine.cpp
     src/thread_pool.cpp
 )

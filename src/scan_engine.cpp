@@ -10,6 +10,7 @@
 #include <thread>
 #include <utility>
 
+#include "error_logger.h"
 #include "thread_pool.h"
 
 namespace scanner {
@@ -25,6 +26,9 @@ struct ScanStats {
     std::map<std::string, std::uint64_t> extension_counts;
     std::vector<FileMetadata> files;
 
+    std::mutex error_mutex;
+    std::vector<ScanError> errors;
+
     void record_file(const fs::path& path,
                      std::uintmax_t size,
                      std::string extension) {
@@ -34,6 +38,21 @@ struct ScanStats {
         std::lock_guard<std::mutex> lock(extension_mutex);
         ++extension_counts[extension];
         files.push_back({display_path(path), size, std::move(extension)});
+    }
+
+    void record_error(const fs::path& path,
+                      std::string message,
+                      ErrorLogger* error_logger) {
+        error_count.fetch_add(1, std::memory_order_relaxed);
+
+        ScanError error{display_path(path), std::move(message)};
+        {
+            std::lock_guard<std::mutex> lock(error_mutex);
+            errors.push_back(error);
+        }
+        if (error_logger) {
+            error_logger->log(error.path, error.message);
+        }
     }
 };
 
@@ -180,16 +199,23 @@ std::size_t parse_worker_count(const std::wstring& value) {
 #endif
 
 ScanResult scan_directory(const ScanOptions& options) {
+    const auto throw_scan_error = [&](const std::string& message) {
+        if (options.error_logger) {
+            options.error_logger->log(display_path(options.root), message);
+        }
+        throw std::invalid_argument(message);
+    };
+
     if (options.worker_count == 0 || options.worker_count > 64) {
-        throw std::invalid_argument("线程数必须是 1 到 64 之间的整数");
+        throw_scan_error("线程数必须是 1 到 64 之间的整数");
     }
 
     std::error_code root_error;
     if (!fs::exists(options.root, root_error) || root_error) {
-        throw std::invalid_argument("目录不存在或无法访问: " + display_path(options.root));
+        throw_scan_error("目录不存在或无法访问: " + display_path(options.root));
     }
     if (!fs::is_directory(options.root, root_error) || root_error) {
-        throw std::invalid_argument("目标不是目录: " + display_path(options.root));
+        throw_scan_error("目标不是目录: " + display_path(options.root));
     }
 
     ScanStats stats;
@@ -211,15 +237,18 @@ ScanResult scan_directory(const ScanOptions& options) {
         }
 
         if (iterator_error) {
-            stats.error_count.fetch_add(1, std::memory_order_relaxed);
+            stats.record_error(options.root,
+                               "目录遍历失败: " + iterator_error.message(),
+                               options.error_logger);
             iterator_error.clear();
             continue;
         }
 
         std::error_code entry_error;
         if (it->is_regular_file(entry_error)) {
+            fs::path file;
             try {
-                fs::path file = it->path();
+                file = it->path();
                 const std::string extension = extension_for_path(file);
                 if (!options.filter.extensions.empty() &&
                     options.filter.extensions.find(extension) ==
@@ -238,7 +267,8 @@ ScanResult scan_directory(const ScanOptions& options) {
                                                  minimum_size,
                                                  maximum_size,
                                                  &stats,
-                                                 cancel = options.cancel] {
+                                                 cancel = options.cancel,
+                                                 error_logger = options.error_logger] {
                     if (cancel && cancel->load(std::memory_order_relaxed)) {
                         return;
                     }
@@ -246,7 +276,9 @@ ScanResult scan_directory(const ScanOptions& options) {
                     std::error_code file_error;
                     const std::uintmax_t size = fs::file_size(file, file_error);
                     if (file_error) {
-                        stats.error_count.fetch_add(1, std::memory_order_relaxed);
+                        stats.record_error(file,
+                                           "读取文件大小失败: " + file_error.message(),
+                                           error_logger);
                         return;
                     }
                     if ((minimum_size && size < *minimum_size) ||
@@ -255,20 +287,26 @@ ScanResult scan_directory(const ScanOptions& options) {
                     }
                     stats.record_file(file, size, extension);
                 });
-            } catch (const std::exception&) {
+            } catch (const std::exception& error) {
                 if (options.cancel && options.cancel->load(std::memory_order_relaxed)) {
                     cancelled = true;
                     break;
                 }
-                stats.error_count.fetch_add(1, std::memory_order_relaxed);
+                stats.record_error(file,
+                                   "提交文件任务失败: " + std::string(error.what()),
+                                   options.error_logger);
             }
         } else if (entry_error) {
-            stats.error_count.fetch_add(1, std::memory_order_relaxed);
+            stats.record_error(it->path(),
+                               "读取目录项失败: " + entry_error.message(),
+                               options.error_logger);
         }
     }
 
     if (iterator_error) {
-        stats.error_count.fetch_add(1, std::memory_order_relaxed);
+        stats.record_error(options.root,
+                           "目录遍历失败: " + iterator_error.message(),
+                           options.error_logger);
     }
 
     thread_pool.shutdown();
@@ -284,6 +322,10 @@ ScanResult scan_directory(const ScanOptions& options) {
     result.cancelled = cancelled;
     result.extension_counts = std::move(stats.extension_counts);
     result.files = std::move(stats.files);
+    result.errors = std::move(stats.errors);
+    result.log_write_failures = options.error_logger
+                                    ? options.error_logger->write_failure_count()
+                                    : 0;
     return result;
 }
 

@@ -2,12 +2,14 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 
+#include "error_logger.h"
 #include "scan_engine.h"
 
 namespace fs = std::filesystem;
@@ -18,6 +20,7 @@ struct CommandLineOptions {
     fs::path root = fs::current_path();
     std::size_t worker_count = scanner::default_worker_count();
     scanner::FileFilter filter;
+    std::optional<fs::path> log_path;
     bool show_help = false;
 };
 
@@ -128,6 +131,12 @@ CommandLineOptions parse_arguments(int argc, Char* argv[]) {
                                  })) {
             continue;
         }
+        if (consume_option_value(index, argc, argv, argument, "--log",
+                                 [&](const auto& value) {
+                                     options.log_path = fs::path(value);
+                                 })) {
+            continue;
+        }
 
         if (!argument.empty() && argument.front() == static_cast<Char>('-')) {
             throw std::invalid_argument("未知选项，请使用 --help 查看用法");
@@ -164,6 +173,7 @@ void print_usage() {
               << "  --ext <列表>        扩展名过滤，例如 .cpp,.h\n"
               << "  --min-size <字节>   最小文件大小，单位为字节\n"
               << "  --max-size <字节>   最大文件大小，单位为字节\n"
+              << "  --log <文件>        将错误写入指定日志文件\n"
               << "  --help              显示帮助信息\n";
 }
 
@@ -210,9 +220,15 @@ int run_scanner(int argc, Char* argv[]) {
     }
 
     try {
+        std::unique_ptr<scanner::ErrorLogger> error_logger;
+        if (options.log_path) {
+            error_logger = std::make_unique<scanner::ErrorLogger>(*options.log_path);
+        }
+
         scanner::ScanOptions scan_options;
         scan_options.root = options.root;
         scan_options.worker_count = options.worker_count;
+        scan_options.error_logger = error_logger.get();
         scan_options.filter = options.filter;
         const scanner::ScanResult result = scanner::scan_directory(scan_options);
 
@@ -226,6 +242,26 @@ int run_scanner(int argc, Char* argv[]) {
                   << "错误数: " << result.error_count << "\n"
                   << "元数据记录: " << result.files.size() << " 条\n"
                   << "耗时: " << result.elapsed_seconds << " 秒\n\n";
+
+        if (!result.errors.empty()) {
+            std::cout << "错误详情（最多显示 10 条）:\n";
+            const std::size_t limit = result.errors.size() < 10 ? result.errors.size() : 10;
+            for (std::size_t index = 0; index < limit; ++index) {
+                std::cout << "  [" << result.errors[index].path << "] "
+                          << result.errors[index].message << "\n";
+            }
+            if (result.errors.size() > limit) {
+                std::cout << "  ... 其余 " << (result.errors.size() - limit)
+                          << " 条错误已省略\n";
+            }
+            std::cout << "\n";
+        }
+        if (options.log_path) {
+            std::cout << "错误日志: " << scanner::display_path(*options.log_path) << "\n";
+        }
+        if (result.log_write_failures > 0) {
+            std::cout << "日志写入失败数: " << result.log_write_failures << "\n";
+        }
 
         print_filter(options.filter);
         if (!options.filter.extensions.empty() || options.filter.min_size ||

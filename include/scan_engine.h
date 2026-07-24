@@ -14,6 +14,8 @@ namespace scanner {
 
 namespace fs = std::filesystem;
 
+class ErrorLogger;
+
 struct FileFilter {
     std::set<std::string> extensions;
     std::optional<std::uintmax_t> min_size;
@@ -31,17 +33,25 @@ struct ScanOptions {
     std::size_t worker_count = 1;
     std::atomic_bool* cancel = nullptr;
     std::atomic<std::uint64_t>* discovered_files = nullptr;
+    ErrorLogger* error_logger = nullptr;
     FileFilter filter;
+};
+
+struct ScanError {
+    std::string path;
+    std::string message;
 };
 
 struct ScanResult {
     std::uint64_t file_count = 0;
     std::uint64_t total_bytes = 0;
     std::uint64_t error_count = 0;
+    std::uint64_t log_write_failures = 0;
     double elapsed_seconds = 0.0;
     bool cancelled = false;
     std::map<std::string, std::uint64_t> extension_counts;
     std::vector<FileMetadata> files;
+    std::vector<ScanError> errors;
 };
 
 std::string display_path(const fs::path& path);

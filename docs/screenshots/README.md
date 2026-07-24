@@ -13,9 +13,11 @@
 | `04-filtered-scan.png` | 扩展名或大小过滤 | 待开发 | - |
 | `05-csv-export.png` | CSV 结果导出 | 待开发 | - |
 | `06-performance-test.png` | 单线程/多线程性能对比 | 待开发 | - |
-| `07-error-handling.png` | 非法路径和读取错误处理 | 待开发 | - |
+| `07-error-handling.png` | 非法路径和读取错误处理 | 已验证，待保存真实截图 | - |
 
 第 4 天的扩展名和文件大小过滤已经完成 CLI 验证；`04-filtered-scan.png` 暂未加入，待保存真实 Windows 终端功能截图后再更新 README，避免引用无效图片。
+
+第 5 天的错误日志和异常处理已经完成 CLI 验证；`07-error-handling.png` 暂未加入，待保存真实 Windows 终端截图后再更新 README，避免引用无效图片。
 
 ## 截图规范
 

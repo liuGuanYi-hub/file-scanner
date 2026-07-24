@@ -230,7 +230,22 @@ std::wstring format_result(const scanner::ScanResult& result) {
            << L"元数据记录: " << result.files.size() << L" 条\r\n"
            << L"耗时: " << std::fixed << std::setprecision(2)
            << result.elapsed_seconds << L" 秒\r\n\r\n"
-           << L"扩展名统计已显示在右侧表格。";
+           << L"扩展名统计已显示在右侧表格。\r\n\r\n";
+
+    if (result.errors.empty()) {
+        output << L"错误详情: 无";
+    } else {
+        output << L"错误详情（最多显示 10 条）:\r\n";
+        const std::size_t limit = result.errors.size() < 10 ? result.errors.size() : 10;
+        for (std::size_t index = 0; index < limit; ++index) {
+            output << L"  [" << utf8_to_wide(result.errors[index].path) << L"] "
+                   << utf8_to_wide(result.errors[index].message) << L"\r\n";
+        }
+        if (result.errors.size() > limit) {
+            output << L"  ... 其余 " << (result.errors.size() - limit)
+                   << L" 条错误已省略";
+        }
+    }
 
     return output.str();
 }
@@ -412,7 +427,13 @@ void handle_scan_complete(HWND window, GuiState* state, ScanMessage* message) {
     if (message->success) {
         SetWindowTextW(state->result_edit, format_result(message->result).c_str());
         populate_extension_table(state, message->result);
-        set_status(state, message->result.cancelled ? L"扫描已停止" : L"扫描完成");
+        if (message->result.cancelled) {
+            set_status(state, L"扫描已停止");
+        } else if (message->result.error_count > 0) {
+            set_status(state, L"扫描完成（存在错误）");
+        } else {
+            set_status(state, L"扫描完成");
+        }
     } else {
         const std::wstring error = utf8_to_wide(message->error);
         SetWindowTextW(state->result_edit, error.c_str());
