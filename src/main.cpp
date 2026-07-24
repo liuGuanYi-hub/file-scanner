@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <set>
@@ -9,6 +10,7 @@
 #include <string>
 #include <type_traits>
 
+#include "csv_exporter.h"
 #include "error_logger.h"
 #include "scan_engine.h"
 
@@ -21,6 +23,7 @@ struct CommandLineOptions {
     std::size_t worker_count = scanner::default_worker_count();
     scanner::FileFilter filter;
     std::optional<fs::path> log_path;
+    std::optional<fs::path> output_path;
     bool show_help = false;
 };
 
@@ -78,6 +81,29 @@ bool consume_option_value(int& index,
     return false;
 }
 
+template <typename Char, typename Callback>
+bool consume_option_aliases(int& index,
+                            int argc,
+                            Char* argv[],
+                            const std::basic_string<Char>& argument,
+                            std::initializer_list<const char*> names,
+                            Callback callback) {
+    for (const char* name : names) {
+        if (consume_option_value(index, argc, argv, argument, name, callback)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+template <typename Char>
+void require_option_value(const std::basic_string<Char>& value,
+                          const char* name) {
+    if (value.empty()) {
+        throw std::invalid_argument(std::string(name) + " 的参数不能为空");
+    }
+}
+
 template <typename Char>
 CommandLineOptions parse_arguments(int argc, Char* argv[]) {
     CommandLineOptions options;
@@ -92,49 +118,63 @@ CommandLineOptions parse_arguments(int argc, Char* argv[]) {
             continue;
         }
 
-        if (consume_option_value(index, argc, argv, argument, "--path",
-                                 [&](const auto& value) {
-                                     options.root = fs::path(value);
-                                     root_set = true;
-                                 })) {
+        if (consume_option_aliases(index, argc, argv, argument, {"--path", "-p"},
+                                   [&](const auto& value) {
+                                       require_option_value(value, "--path");
+                                       options.root = fs::path(value);
+                                       root_set = true;
+                                   })) {
             continue;
         }
-        if (consume_option_value(index, argc, argv, argument, "--threads",
-                                 [&](const auto& value) {
-                                     if constexpr (std::is_same_v<Char, wchar_t>) {
-                                         options.worker_count = scanner::parse_worker_count(
-                                             std::wstring(value));
-                                     } else {
-                                         options.worker_count = scanner::parse_worker_count(
-                                             std::string(value));
-                                     }
-                                     worker_set = true;
-                                 })) {
+        if (consume_option_aliases(index, argc, argv, argument,
+                                   {"--threads", "-t"},
+                                   [&](const auto& value) {
+                                       if constexpr (std::is_same_v<Char, wchar_t>) {
+                                           options.worker_count = scanner::parse_worker_count(
+                                               std::wstring(value));
+                                       } else {
+                                           options.worker_count = scanner::parse_worker_count(
+                                               std::string(value));
+                                       }
+                                       worker_set = true;
+                                   })) {
             continue;
         }
-        if (consume_option_value(index, argc, argv, argument, "--ext",
-                                 [&](const auto& value) {
-                                     options.filter.extensions =
-                                         parse_extensions_argument(value);
-                                 })) {
+        if (consume_option_aliases(index, argc, argv, argument, {"--ext", "-e"},
+                                   [&](const auto& value) {
+                                       require_option_value(value, "--ext");
+                                       options.filter.extensions =
+                                           parse_extensions_argument(value);
+                                   })) {
             continue;
         }
-        if (consume_option_value(index, argc, argv, argument, "--min-size",
-                                 [&](const auto& value) {
-                                     options.filter.min_size = parse_size_argument(value);
-                                 })) {
+        if (consume_option_aliases(index, argc, argv, argument,
+                                   {"--min-size", "-m"},
+                                   [&](const auto& value) {
+                                       options.filter.min_size = parse_size_argument(value);
+                                   })) {
             continue;
         }
-        if (consume_option_value(index, argc, argv, argument, "--max-size",
-                                 [&](const auto& value) {
-                                     options.filter.max_size = parse_size_argument(value);
-                                 })) {
+        if (consume_option_aliases(index, argc, argv, argument,
+                                   {"--max-size", "-M"},
+                                   [&](const auto& value) {
+                                       options.filter.max_size = parse_size_argument(value);
+                                   })) {
             continue;
         }
-        if (consume_option_value(index, argc, argv, argument, "--log",
-                                 [&](const auto& value) {
-                                     options.log_path = fs::path(value);
-                                 })) {
+        if (consume_option_aliases(index, argc, argv, argument, {"--log", "-l"},
+                                   [&](const auto& value) {
+                                       require_option_value(value, "--log");
+                                       options.log_path = fs::path(value);
+                                   })) {
+            continue;
+        }
+        if (consume_option_aliases(index, argc, argv, argument,
+                                   {"--output", "-o"},
+                                   [&](const auto& value) {
+                                       require_option_value(value, "--output");
+                                       options.output_path = fs::path(value);
+                                   })) {
             continue;
         }
 
@@ -166,15 +206,17 @@ CommandLineOptions parse_arguments(int argc, Char* argv[]) {
 void print_usage() {
     std::cout << "用法: file_scanner.exe [扫描目录] [线程数] [选项]\n"
               << "示例: file_scanner.exe . 4 --ext .cpp,.h\n"
-              << "      file_scanner.exe --path . --threads 4 --min-size 1024\n\n"
+              << "      file_scanner.exe --path . --threads 4 --output output\\scan.csv\n"
+              << "      file_scanner.exe -p . -t 4 -e cpp,h -o output\\scan.csv\n\n"
               << "选项:\n"
-              << "  --path <目录>       指定扫描目录\n"
-              << "  --threads <数量>    指定工作线程数，范围 1-64\n"
-              << "  --ext <列表>        扩展名过滤，例如 .cpp,.h\n"
-              << "  --min-size <字节>   最小文件大小，单位为字节\n"
-              << "  --max-size <字节>   最大文件大小，单位为字节\n"
-              << "  --log <文件>        将错误写入指定日志文件\n"
-              << "  --help              显示帮助信息\n";
+              << "  --path, -p <目录>       指定扫描目录，默认当前目录\n"
+              << "  --threads, -t <数量>    工作线程数，范围 1-64，默认按 CPU 自动选择\n"
+              << "  --ext, -e <列表>        扩展名过滤，例如 .cpp,.h\n"
+              << "  --min-size, -m <字节>   最小文件大小，单位为字节\n"
+              << "  --max-size, -M <字节>   最大文件大小，单位为字节\n"
+              << "  --log, -l <文件>        将错误写入指定日志文件\n"
+              << "  --output, -o <文件>     将匹配文件元数据导出为 CSV\n"
+              << "  --help, -h              显示帮助信息\n";
 }
 
 void print_filter(const scanner::FileFilter& filter) {
@@ -231,6 +273,9 @@ int run_scanner(int argc, Char* argv[]) {
         scan_options.error_logger = error_logger.get();
         scan_options.filter = options.filter;
         const scanner::ScanResult result = scanner::scan_directory(scan_options);
+        if (options.output_path) {
+            scanner::export_scan_result_csv(*options.output_path, result);
+        }
 
         std::cout << "\n扫描完成\n"
                   << "目录: " << scanner::display_path(options.root) << "\n"
@@ -261,6 +306,11 @@ int run_scanner(int argc, Char* argv[]) {
         }
         if (result.log_write_failures > 0) {
             std::cout << "日志写入失败数: " << result.log_write_failures << "\n";
+        }
+        if (options.output_path) {
+            std::cout << "CSV 文件: " << scanner::display_path(*options.output_path)
+                      << "\n"
+                      << "导出记录: " << result.files.size() << " 条\n";
         }
 
         print_filter(options.filter);

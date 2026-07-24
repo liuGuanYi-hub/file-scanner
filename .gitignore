@@ -1,6 +1,7 @@
 build/
 build-*/
 logs/
+output/
 .vs/
 *.user
 *.suo

@@ -16,12 +16,16 @@
 - 扩展名和文件大小过滤
 - 匹配文件的路径、大小和扩展名元数据记录
 - 线程安全错误收集与可选日志文件输出
+- CSV 文件导出，支持 UTF-8 中文和特殊字符转义
+- 统一长参数/短参数配置和参数错误提示
+- 1/2/4/8 线程性能基准脚本和吞吐量统计
+- 可重复执行的 Windows smoke test 和完整验收清单
 - Windows 原生 Win32 GUI 页面
 - GUI 动态进度条、浅蓝色主题和扩展名统计表格
 - C++17 + CMake + Ninja 构建
 - 基础构建和运行截图
 
-CSV 导出和性能基准将在 10 天开发计划中逐步完成。
+已提供可重复的 Windows smoke test；更大规模压力测试仍可继续扩展。
 
 详细计划见：[docs/开发计划.md](docs/开发计划.md)
 
@@ -68,15 +72,22 @@ CSV 导出和性能基准将在 10 天开发计划中逐步完成。
 │       ├── 03-multithread-scan.png
 │       └── 08-gui-progress-theme-table.png
 ├── include/
+│   ├── csv_exporter.h
 │   ├── error_logger.h
 │   ├── scan_engine.h
 │   └── thread_pool.h
 ├── src/
+│   ├── csv_exporter.cpp
 │   ├── error_logger.cpp
 │   ├── main.cpp
 │   ├── gui_main_win32.cpp
 │   ├── scan_engine.cpp
 │   └── thread_pool.cpp
+├── scripts/
+│   └── benchmark.ps1
+├── tests/
+│   ├── README.md
+│   └── smoke_tests.ps1
 ├── CMakeLists.txt
 ├── README.md
 └── .gitignore
@@ -118,6 +129,20 @@ cmake --build build
 .\build\file_scanner.exe . 4 --log .\logs\scan-errors.log
 ```
 
+导出匹配文件元数据到 CSV：
+
+```powershell
+.\build\file_scanner.exe . 4 --output .\output\scan.csv
+```
+
+运行 1/2/4/8 线程性能对比，每组默认重复 3 次：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\benchmark.ps1" -ScanPath ".\src"
+```
+
+结果保存到 `output/benchmark.csv`，包含平均、最快、最慢墙钟耗时、文件数、错误数和文件/MiB 吞吐量。自定义线程组时使用逗号字符串，例如 `-ThreadCounts "1,2,4"`。
+
 启动 Windows 原生 GUI 页面：
 
 ```powershell
@@ -133,6 +158,9 @@ GUI 页面支持选择扫描目录、设置线程数、输入扩展名过滤和�
 3. `--ext` 接收逗号分隔的扩展名列表，支持省略点号，例如 `cpp,h`。
 4. `--min-size` 和 `--max-size` 的单位均为字节，两个参数可以单独使用。
 5. `--log` 指定错误日志文件；日志采用 UTF-8 文本格式，目录不存在时会自动创建。
+6. `--output` 指定 CSV 输出文件；输出目录不存在时会自动创建，每个匹配文件占一行。
+7. 参数同时支持空格和等号形式，例如 `--threads 4`、`--threads=4`；常用短参数为 `-p`、`-t`、`-e`、`-o`。
+8. 保留位置参数兼容写法：`file_scanner.exe . 4` 等价于 `--path . --threads 4`。
 
 ## 技术实现
 
@@ -145,6 +173,9 @@ GUI 页面支持选择扫描目录、设置线程数、输入扩展名过滤和�
 - 队列容量限制、满载等待和关闭唤醒
 - 扩展名规范化、文件大小范围过滤和元数据记录
 - 错误结果结构化收集，`ErrorLogger` 使用互斥锁保证多线程追加安全
+- `CsvExporter` 输出 UTF-8 BOM、中文表头和逐文件元数据，并转义逗号、双引号与换行
+- 命令行解析统一处理长短参数、等号形式、默认线程数和非法参数提示
+- `scripts/benchmark.ps1` 固定执行 1/2/4/8 线程并重复测量，用墙钟时间计算吞吐量，同时校验各线程结果一致
 - 互斥锁和条件变量
 - 原子计数器
 - `std::filesystem` 错误码处理
@@ -175,6 +206,19 @@ cmake --build build
 - 扩展名过滤、最小/最大字节过滤结果与文件实际大小一致
 - 非法目录会返回明确错误，并在指定 `--log` 时写入带时间、路径和原因的日志
 - 扫描过程中的可恢复错误会继续处理其他任务，CLI 和 GUI 展示最多 10 条错误详情
+- CSV 导出记录数与元数据记录数一致，路径和扩展名字段遵循 CSV 转义规则
+- 长短参数、位置参数、缺少参数值、空路径、线程数边界和未知参数均已验证
+- 性能脚本已验证默认 4 组线程、重复运行结果一致，且 `output/benchmark.csv` 行数为 4
+
+完整 smoke test：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\smoke_tests.ps1"
+```
+
+测试脚本覆盖基础扫描、1/4/64 线程一致性、空目录、非法目录、过滤、CSV、日志、参数边界、1/2/4/8 性能脚本和 GUI 启动；最近一次结果为 `Passed: 8  Failed: 0`。
+
+详细测试说明见：[tests/README.md](tests/README.md)。
 
 ## 开发计划与截图规范
 
@@ -194,8 +238,6 @@ cmake --build build
 
 ## 后续路线
 
-1. 增加 CSV 导出和配置参数。
-2. 增加单线程/多线程性能对比。
-3. 完善自动化测试和压力测试。
-4. 增加修改时间过滤。
-5. 后续扩展数据库、网络、CSV 导出和更丰富的 Windows API 能力。
+1. 完善自动化测试和压力测试。
+2. 增加修改时间过滤。
+3. 后续扩展数据库、网络和更丰富的 Windows API 能力。

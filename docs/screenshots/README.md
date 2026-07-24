@@ -10,14 +10,20 @@
 | `02-basic-scan.png` | 基础目录扫描 | 已完成 | 2026-07-23 |
 | `03-multithread-scan.png` | 多线程扫描和线程池回归验证 | 已完成 | 2026-07-23 |
 | `08-gui-progress-theme-table.png` | Win32 GUI 进度条、颜色主题和扩展名表格 | 已完成 | 2026-07-24 |
-| `04-filtered-scan.png` | 扩展名或大小过滤 | 待开发 | - |
-| `05-csv-export.png` | CSV 结果导出 | 待开发 | - |
-| `06-performance-test.png` | 单线程/多线程性能对比 | 待开发 | - |
+| `04-filtered-scan.png` | 扩展名、大小过滤和命令行配置 | 已验证，待保存真实截图 | - |
+| `05-csv-export.png` | CSV 结果导出 | 已验证，待保存真实截图 | - |
+| `06-performance-test.png` | 单线程/多线程性能对比 | 已验证，待保存真实截图 | - |
 | `07-error-handling.png` | 非法路径和读取错误处理 | 已验证，待保存真实截图 | - |
 
 第 4 天的扩展名和文件大小过滤已经完成 CLI 验证；`04-filtered-scan.png` 暂未加入，待保存真实 Windows 终端功能截图后再更新 README，避免引用无效图片。
 
 第 5 天的错误日志和异常处理已经完成 CLI 验证；`07-error-handling.png` 暂未加入，待保存真实 Windows 终端截图后再更新 README，避免引用无效图片。
+
+第 6 天的 CSV 导出已经完成 CLI 验证；`05-csv-export.png` 暂未加入，待保存真实 Windows 终端截图后再更新 README，避免引用无效图片。
+
+第 7 天的命令行配置已经完成 CLI 验证；`04-filtered-scan.png` 暂未加入，待保存真实 Windows 终端截图后再更新 README，避免引用无效图片。
+
+第 8 天的 1/2/4/8 线程性能对比已经完成脚本验证；`06-performance-test.png` 暂未加入，待保存真实终端截图后再更新 README，避免引用无效图片。
 
 ## 截图规范
 

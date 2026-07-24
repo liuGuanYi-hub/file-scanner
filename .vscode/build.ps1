@@ -15,6 +15,7 @@ $commonArgs = @(
     '-g'
     '-static'
     '-municode'
+    'src/csv_exporter.cpp'
     'src/error_logger.cpp'
     'src/scan_engine.cpp'
     'src/thread_pool.cpp'
