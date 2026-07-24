@@ -20,6 +20,7 @@
 - 统一长参数/短参数配置和参数错误提示
 - 1/2/4/8 线程性能基准脚本和吞吐量统计
 - 可重复执行的 Windows smoke test 和完整验收清单
+- v1.0.0-demo 发布说明和面试总结
 - Windows 原生 Win32 GUI 页面
 - GUI 动态进度条、浅蓝色主题和扩展名统计表格
 - C++17 + CMake + Ninja 构建
@@ -65,6 +66,8 @@
 ├── .vscode/
 ├── docs/
 │   ├── 开发计划.md
+│   ├── 发布说明.md
+│   ├── 面试总结.md
 │   └── screenshots/
 │       ├── README.md
 │       ├── 01-build-success.png
@@ -84,7 +87,8 @@
 │   ├── scan_engine.cpp
 │   └── thread_pool.cpp
 ├── scripts/
-│   └── benchmark.ps1
+│   ├── benchmark.ps1
+│   └── release_check.ps1
 ├── tests/
 │   ├── README.md
 │   └── smoke_tests.ps1
@@ -219,6 +223,19 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\smoke_tests.ps1
 测试脚本覆盖基础扫描、1/4/64 线程一致性、空目录、非法目录、过滤、CSV、日志、参数边界、1/2/4/8 性能脚本和 GUI 启动；最近一次结果为 `Passed: 8  Failed: 0`。
 
 详细测试说明见：[tests/README.md](tests/README.md)。
+
+## 演示版交付与面试准备
+
+- [演示版发布说明](docs/发布说明.md)：构建、五分钟演示、一键发布检查和已知限制。
+- [面试总结](docs/面试总结.md)：项目介绍、架构讲解、并发/错误处理/性能问题和简历描述。
+
+发布检查命令：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\release_check.ps1" -ScanPath ".\src"
+```
+
+该命令使用独立的 `build-release-check/` 目录完成 Release 构建，不删除现有构建目录。
 
 ## 开发计划与截图规范
 
