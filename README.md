@@ -12,6 +12,8 @@
 - 独立 `ThreadPool` 线程池模块
 - 文件数量、总大小和错误数统计
 - 文件扩展名统计
+- Windows 原生 Win32 GUI 页面
+- GUI 动态进度条、浅蓝色主题和扩展名统计表格
 - C++17 + CMake + Ninja 构建
 - 基础构建和运行截图
 
@@ -28,6 +30,7 @@
 - Ninja 1.13.2
 - GDB
 - VS Code
+- Windows Win32 API
 
 ## 功能演示
 
@@ -43,6 +46,10 @@
 
 ![线程池多线程扫描结果](docs/screenshots/03-multithread-scan.png)
 
+### GUI 进度条、主题和扩展名表格
+
+![GUI 进度条、颜色主题和扩展名统计表格](docs/screenshots/08-gui-progress-theme-table.png)
+
 ## 项目结构
 
 ```text
@@ -54,11 +61,15 @@
 │       ├── README.md
 │       ├── 01-build-success.png
 │       ├── 02-basic-scan.png
-│       └── 03-multithread-scan.png
+│       ├── 03-multithread-scan.png
+│       └── 08-gui-progress-theme-table.png
 ├── include/
+│   ├── scan_engine.h
 │   └── thread_pool.h
 ├── src/
 │   ├── main.cpp
+│   ├── gui_main_win32.cpp
+│   ├── scan_engine.cpp
 │   └── thread_pool.cpp
 ├── CMakeLists.txt
 ├── README.md
@@ -89,6 +100,14 @@ cmake --build build
 .\build\file_scanner.exe "D:\资料" 8
 ```
 
+启动 Windows 原生 GUI 页面：
+
+```powershell
+.\build\file_scanner_gui.exe
+```
+
+GUI 页面支持选择扫描目录、设置线程数、启动后台扫描，并通过动态进度条显示扫描状态；完成后在浅蓝色主题页面中展示文件数量、总大小、错误数和包含扩展名、文件数、占比的统计表格。也可以在 VS Code 的“运行和调试”配置中选择“启动文件扫描器 GUI”。
+
 参数说明：
 
 1. 第一个参数是扫描目录，省略时扫描当前目录。
@@ -96,7 +115,7 @@ cmake --build build
 
 ## 技术实现
 
-主线程负责遍历目录并将文件路径放入线程安全队列；工作线程从队列中取出文件，读取文件大小并统计扩展名。队列关闭后，工作线程会处理完剩余任务再退出。
+共享扫描引擎负责遍历目录并将文件路径放入线程安全队列；工作线程从队列中取出文件，读取文件大小并统计扩展名。命令行和 Win32 GUI 共用同一套扫描引擎，队列关闭后，工作线程会处理完剩余任务再退出。
 
 当前实现重点体现：
 
@@ -106,6 +125,7 @@ cmake --build build
 - 原子计数器
 - `std::filesystem` 错误码处理
 - Windows 宽字符命令行入口和 UTF-8 路径显示
+- Win32 原生窗口、目录选择和后台扫描线程
 - CMake 可复现构建
 
 ## 测试结果
@@ -150,4 +170,4 @@ cmake --build build
 2. 增加扩展名、大小和时间过滤。
 3. 增加日志、CSV 导出和配置参数。
 4. 增加单线程/多线程性能对比。
-5. 后续扩展 GUI、数据库、网络和 Windows API 能力。
+5. 后续扩展数据库、网络、CSV 导出和更丰富的 Windows API 能力。

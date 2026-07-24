@@ -6,7 +6,7 @@ $buildRoot = 'build'
 
 New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
 
-$compilerArgs = @(
+$commonArgs = @(
     '-fdiagnostics-color=always'
     '-std=c++17'
     '-Wall'
@@ -14,16 +14,35 @@ $compilerArgs = @(
     '-Wpedantic'
     '-g'
     '-static'
-    'src/main.cpp'
+    '-municode'
+    'src/scan_engine.cpp'
     'src/thread_pool.cpp'
     '-I'
     'include'
-    '-municode'
+)
+
+$cli_args = $commonArgs + @(
+    'src/main.cpp'
     '-o'
     'build/file_scanner.exe'
 )
 
-& $compiler @compilerArgs
+& $compiler @cli_args
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+$gui_args = $commonArgs + @(
+    'src/gui_main_win32.cpp'
+    '-mwindows'
+    '-lcomctl32'
+    '-lshell32'
+    '-lole32'
+    '-o'
+    'build/file_scanner_gui.exe'
+)
+
+& $compiler @gui_args
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
