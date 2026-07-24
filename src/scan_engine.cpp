@@ -1,8 +1,11 @@
 #include "scan_engine.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <limits>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -20,18 +23,17 @@ struct ScanStats {
 
     std::mutex extension_mutex;
     std::map<std::string, std::uint64_t> extension_counts;
+    std::vector<FileMetadata> files;
 
-    void record_file(const fs::path& path, std::uintmax_t size) {
+    void record_file(const fs::path& path,
+                     std::uintmax_t size,
+                     std::string extension) {
         file_count.fetch_add(1, std::memory_order_relaxed);
         total_bytes.fetch_add(size, std::memory_order_relaxed);
 
-        std::string extension = path.extension().u8string();
-        if (extension.empty()) {
-            extension = "[无扩展名]";
-        }
-
         std::lock_guard<std::mutex> lock(extension_mutex);
         ++extension_counts[extension];
+        files.push_back({display_path(path), size, std::move(extension)});
     }
 };
 
@@ -48,6 +50,91 @@ std::size_t parse_worker_count_impl(const String& value) {
     }
 }
 
+std::string trim_ascii(std::string value) {
+    const auto is_space = [](unsigned char character) {
+        return std::isspace(character) != 0;
+    };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), [&](char character) {
+                    return !is_space(static_cast<unsigned char>(character));
+                }));
+    value.erase(std::find_if(value.rbegin(), value.rend(), [&](char character) {
+                    return !is_space(static_cast<unsigned char>(character));
+                }).base(),
+                value.end());
+    return value;
+}
+
+std::string lowercase_ascii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    return value;
+}
+
+std::string normalize_extension(std::string extension) {
+    extension = lowercase_ascii(trim_ascii(std::move(extension)));
+    if (extension.empty() || extension == "*") {
+        return {};
+    }
+    if (extension == "none" || extension == "[无扩展名]") {
+        return "[无扩展名]";
+    }
+    if (extension.front() != '.') {
+        extension.insert(extension.begin(), '.');
+    }
+    return extension;
+}
+
+std::string extension_for_path(const fs::path& path) {
+    std::string extension = normalize_extension(path.extension().u8string());
+    return extension.empty() ? "[无扩展名]" : extension;
+}
+
+template <typename String>
+std::optional<std::uintmax_t> parse_size_bytes_impl(const String& value) {
+    if (value.empty()) {
+        throw std::invalid_argument("文件大小不能是空值");
+    }
+
+    std::size_t consumed = 0;
+    try {
+        const unsigned long long parsed = std::stoull(value, &consumed);
+        if (consumed != value.size()) {
+            throw std::invalid_argument("文件大小必须是非负整数，单位为字节");
+        }
+        if (parsed > std::numeric_limits<std::uintmax_t>::max()) {
+            throw std::out_of_range("file size is too large");
+        }
+        return static_cast<std::uintmax_t>(parsed);
+    } catch (const std::invalid_argument&) {
+        throw std::invalid_argument("文件大小必须是非负整数，单位为字节");
+    } catch (const std::out_of_range&) {
+        throw std::invalid_argument("文件大小超出可表示范围");
+    }
+}
+
+template <typename String>
+std::set<std::string> parse_extensions_impl(const String& value) {
+    std::set<std::string> extensions;
+    std::basic_istringstream<typename String::value_type> stream(value);
+    String item;
+    while (std::getline(stream, item, static_cast<typename String::value_type>(','))) {
+        std::string narrow;
+        narrow.reserve(item.size());
+        for (const auto character : item) {
+            if (static_cast<unsigned long long>(character) > 127) {
+                throw std::invalid_argument("扩展名过滤器目前只支持 ASCII 扩展名");
+            }
+            narrow.push_back(static_cast<char>(character));
+        }
+        const std::string normalized = normalize_extension(std::move(narrow));
+        if (!normalized.empty()) {
+            extensions.insert(normalized);
+        }
+    }
+    return extensions;
+}
+
 }  // namespace
 
 std::string display_path(const fs::path& path) {
@@ -56,6 +143,14 @@ std::string display_path(const fs::path& path) {
     } catch (const std::exception&) {
         return "<无法显示的路径>";
     }
+}
+
+std::set<std::string> parse_extensions(const std::string& value) {
+    return parse_extensions_impl(value);
+}
+
+std::optional<std::uintmax_t> parse_size_bytes(const std::string& value) {
+    return parse_size_bytes_impl(value);
 }
 
 std::size_t default_worker_count() {
@@ -71,6 +166,14 @@ std::size_t parse_worker_count(const std::string& value) {
 }
 
 #ifdef _WIN32
+std::set<std::string> parse_extensions(const std::wstring& value) {
+    return parse_extensions_impl(value);
+}
+
+std::optional<std::uintmax_t> parse_size_bytes(const std::wstring& value) {
+    return parse_size_bytes_impl(value);
+}
+
 std::size_t parse_worker_count(const std::wstring& value) {
     return parse_worker_count_impl(value);
 }
@@ -90,7 +193,9 @@ ScanResult scan_directory(const ScanOptions& options) {
     }
 
     ScanStats stats;
-    ThreadPool thread_pool(options.worker_count);
+    const std::size_t queue_capacity =
+        std::max<std::size_t>(options.worker_count * 8, 64);
+    ThreadPool thread_pool(options.worker_count, queue_capacity);
     const auto start_time = std::chrono::steady_clock::now();
 
     std::error_code iterator_error;
@@ -115,11 +220,25 @@ ScanResult scan_directory(const ScanOptions& options) {
         if (it->is_regular_file(entry_error)) {
             try {
                 fs::path file = it->path();
+                const std::string extension = extension_for_path(file);
+                if (!options.filter.extensions.empty() &&
+                    options.filter.extensions.find(extension) ==
+                        options.filter.extensions.end()) {
+                    continue;
+                }
                 if (options.discovered_files) {
                     options.discovered_files->fetch_add(1, std::memory_order_relaxed);
                 }
 
-                thread_pool.enqueue([file = std::move(file), &stats, cancel = options.cancel] {
+                const auto minimum_size = options.filter.min_size;
+                const auto maximum_size = options.filter.max_size;
+                thread_pool.enqueue_with_cancel(options.cancel,
+                                                [file = std::move(file),
+                                                 extension,
+                                                 minimum_size,
+                                                 maximum_size,
+                                                 &stats,
+                                                 cancel = options.cancel] {
                     if (cancel && cancel->load(std::memory_order_relaxed)) {
                         return;
                     }
@@ -130,9 +249,17 @@ ScanResult scan_directory(const ScanOptions& options) {
                         stats.error_count.fetch_add(1, std::memory_order_relaxed);
                         return;
                     }
-                    stats.record_file(file, size);
+                    if ((minimum_size && size < *minimum_size) ||
+                        (maximum_size && size > *maximum_size)) {
+                        return;
+                    }
+                    stats.record_file(file, size, extension);
                 });
             } catch (const std::exception&) {
+                if (options.cancel && options.cancel->load(std::memory_order_relaxed)) {
+                    cancelled = true;
+                    break;
+                }
                 stats.error_count.fetch_add(1, std::memory_order_relaxed);
             }
         } else if (entry_error) {
@@ -156,6 +283,7 @@ ScanResult scan_directory(const ScanOptions& options) {
     result.elapsed_seconds = elapsed;
     result.cancelled = cancelled;
     result.extension_counts = std::move(stats.extension_counts);
+    result.files = std::move(stats.files);
     return result;
 }
 

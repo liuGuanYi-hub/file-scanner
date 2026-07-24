@@ -2,9 +2,13 @@
 
 #include <stdexcept>
 
-ThreadPool::ThreadPool(std::size_t thread_count) {
+ThreadPool::ThreadPool(std::size_t thread_count, std::size_t queue_capacity)
+    : queue_capacity_(queue_capacity) {
     if (thread_count == 0) {
         throw std::invalid_argument("thread pool requires at least one worker");
+    }
+    if (queue_capacity == 0) {
+        throw std::invalid_argument("thread pool queue capacity must be positive");
     }
 
     workers_.reserve(thread_count);
@@ -31,6 +35,7 @@ void ThreadPool::shutdown() noexcept {
     }
 
     condition_.notify_all();
+    space_condition_.notify_all();
     for (std::thread& worker : workers_) {
         if (worker.joinable()) {
             worker.join();
@@ -41,6 +46,15 @@ void ThreadPool::shutdown() noexcept {
 std::size_t ThreadPool::size() const noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     return workers_.size();
+}
+
+std::size_t ThreadPool::capacity() const noexcept {
+    return queue_capacity_;
+}
+
+std::size_t ThreadPool::pending_tasks() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return tasks_.size();
 }
 
 void ThreadPool::worker_loop() {
@@ -60,6 +74,8 @@ void ThreadPool::worker_loop() {
             task = std::move(tasks_.front());
             tasks_.pop();
         }
+
+        space_condition_.notify_one();
 
         try {
             task();

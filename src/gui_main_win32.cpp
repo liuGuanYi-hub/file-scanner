@@ -42,6 +42,12 @@ constexpr int IDC_TITLE_LABEL = 1009;
 constexpr int IDC_PATH_LABEL = 1010;
 constexpr int IDC_WORKER_LABEL = 1011;
 constexpr int IDC_RESULT_LABEL = 1012;
+constexpr int IDC_EXTENSION_FILTER_LABEL = 1013;
+constexpr int IDC_EXTENSION_FILTER_EDIT = 1014;
+constexpr int IDC_MIN_SIZE_LABEL = 1015;
+constexpr int IDC_MIN_SIZE_EDIT = 1016;
+constexpr int IDC_MAX_SIZE_LABEL = 1017;
+constexpr int IDC_MAX_SIZE_EDIT = 1018;
 constexpr UINT_PTR kProgressTimer = 1;
 constexpr UINT WM_SCAN_COMPLETE = WM_APP + 1;
 
@@ -60,6 +66,12 @@ struct GuiState {
     HWND browse_button = nullptr;
     HWND worker_label = nullptr;
     HWND worker_edit = nullptr;
+    HWND extension_filter_label = nullptr;
+    HWND extension_filter_edit = nullptr;
+    HWND min_size_label = nullptr;
+    HWND min_size_edit = nullptr;
+    HWND max_size_label = nullptr;
+    HWND max_size_edit = nullptr;
     HWND start_button = nullptr;
     HWND status_label = nullptr;
     HWND progress_bar = nullptr;
@@ -91,11 +103,12 @@ GuiState* get_state(HWND window) {
 
 std::wstring get_window_text(HWND control) {
     const int length = GetWindowTextLengthW(control);
-    std::wstring text(static_cast<std::size_t>(length) + 1, L'\0');
-    if (length > 0) {
-        GetWindowTextW(control, text.data(), length + 1);
-        text.resize(static_cast<std::size_t>(length));
+    if (length <= 0) {
+        return {};
     }
+    std::wstring text(static_cast<std::size_t>(length) + 1, L'\0');
+    GetWindowTextW(control, text.data(), length + 1);
+    text.resize(static_cast<std::size_t>(length));
     return text;
 }
 
@@ -127,6 +140,9 @@ void enable_input_controls(GuiState* state, bool enabled) {
     EnableWindow(state->path_edit, enabled);
     EnableWindow(state->browse_button, enabled);
     EnableWindow(state->worker_edit, enabled);
+    EnableWindow(state->extension_filter_edit, enabled);
+    EnableWindow(state->min_size_edit, enabled);
+    EnableWindow(state->max_size_edit, enabled);
     EnableWindow(state->start_button, enabled);
 }
 
@@ -140,7 +156,7 @@ void layout_controls(HWND window, GuiState* state) {
     const int label_width = 88;
     const int browse_width = 92;
     const int row_height = 28;
-    const int top_section_height = 136;
+    const int top_section_height = 172;
     const int section_gap = 16;
     const int result_top = top_section_height + section_gap;
     const int result_bottom = height - 18;
@@ -172,7 +188,18 @@ void layout_controls(HWND window, GuiState* state) {
                std::max(180, width - margin * 2 - label_width - 220),
                22,
                TRUE);
-    MoveWindow(state->progress_bar, margin, 128, width - margin * 2, 16, TRUE);
+    MoveWindow(state->extension_filter_label, margin, 132, label_width, 22, TRUE);
+    MoveWindow(state->extension_filter_edit, margin + label_width, 128, 190, row_height, TRUE);
+    MoveWindow(state->min_size_label, 330, 132, 72, 22, TRUE);
+    MoveWindow(state->min_size_edit, 402, 128, 100, row_height, TRUE);
+    MoveWindow(state->max_size_label, 520, 132, 72, 22, TRUE);
+    MoveWindow(state->max_size_edit,
+               592,
+               128,
+               std::max(100, width - 592 - margin),
+               row_height,
+               TRUE);
+    MoveWindow(state->progress_bar, margin, 164, width - margin * 2, 16, TRUE);
     MoveWindow(state->result_label, margin, result_top, summary_width, 22, TRUE);
     MoveWindow(state->result_edit, margin, result_top + 24, summary_width, result_height, TRUE);
     MoveWindow(state->extension_list, table_x, result_top + 24, table_width, result_height, TRUE);
@@ -200,6 +227,7 @@ std::wstring format_result(const scanner::ScanResult& result) {
            << static_cast<double>(result.total_bytes) / (1024.0 * 1024.0)
            << L" MiB\r\n"
            << L"错误数: " << result.error_count << L"\r\n"
+           << L"元数据记录: " << result.files.size() << L" 条\r\n"
            << L"耗时: " << std::fixed << std::setprecision(2)
            << result.elapsed_seconds << L" 秒\r\n\r\n"
            << L"扩展名统计已显示在右侧表格。";
@@ -304,8 +332,25 @@ void start_scan(HWND window, GuiState* state) {
 
     const std::wstring path_text = get_window_text(state->path_edit);
     std::size_t worker_count = 0;
+    scanner::FileFilter filter;
     try {
         worker_count = scanner::parse_worker_count(get_window_text(state->worker_edit));
+        filter.extensions = scanner::parse_extensions(
+            get_window_text(state->extension_filter_edit));
+
+        const std::wstring min_size_text = get_window_text(state->min_size_edit);
+        if (!min_size_text.empty()) {
+            filter.min_size = scanner::parse_size_bytes(min_size_text);
+        }
+
+        const std::wstring max_size_text = get_window_text(state->max_size_edit);
+        if (!max_size_text.empty()) {
+            filter.max_size = scanner::parse_size_bytes(max_size_text);
+        }
+        if (filter.min_size && filter.max_size &&
+            *filter.min_size > *filter.max_size) {
+            throw std::invalid_argument("最小文件大小不能大于最大文件大小");
+        }
     } catch (const std::exception& error) {
         const std::wstring message = utf8_to_wide(error.what());
         MessageBoxW(window, message.c_str(), L"参数错误", MB_OK | MB_ICONWARNING);
@@ -327,10 +372,14 @@ void start_scan(HWND window, GuiState* state) {
     SetTimer(window, kProgressTimer, 150, nullptr);
 
     const fs::path root(path_text);
-    state->worker = std::thread([window, state, root, worker_count] {
+    state->worker = std::thread([window, state, root, worker_count, filter = std::move(filter)]() mutable {
         try {
-            const scanner::ScanOptions options{
-                root, worker_count, &state->cancel, &state->discovered_files};
+            scanner::ScanOptions options;
+            options.root = root;
+            options.worker_count = worker_count;
+            options.cancel = &state->cancel;
+            options.discovered_files = &state->discovered_files;
+            options.filter = std::move(filter);
             auto result = scanner::scan_directory(options);
             auto* message = new ScanMessage();
             message->success = true;
@@ -416,6 +465,30 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
         state->worker_edit = CreateWindowExW(
             WS_EX_CLIENTEDGE, L"EDIT", L"4", WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_CENTER,
             0, 0, 0, 0, window, reinterpret_cast<HMENU>(IDC_WORKER_EDIT), nullptr, nullptr);
+        state->extension_filter_label = CreateWindowW(
+            L"STATIC", L"扩展名:", WS_CHILD | WS_VISIBLE | SS_LEFT,
+            0, 0, 0, 0, window,
+            reinterpret_cast<HMENU>(IDC_EXTENSION_FILTER_LABEL), nullptr, nullptr);
+        state->extension_filter_edit = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+            0, 0, 0, 0, window,
+            reinterpret_cast<HMENU>(IDC_EXTENSION_FILTER_EDIT), nullptr, nullptr);
+        state->min_size_label = CreateWindowW(
+            L"STATIC", L"最小字节:", WS_CHILD | WS_VISIBLE | SS_LEFT,
+            0, 0, 0, 0, window,
+            reinterpret_cast<HMENU>(IDC_MIN_SIZE_LABEL), nullptr, nullptr);
+        state->min_size_edit = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_AUTOHSCROLL,
+            0, 0, 0, 0, window,
+            reinterpret_cast<HMENU>(IDC_MIN_SIZE_EDIT), nullptr, nullptr);
+        state->max_size_label = CreateWindowW(
+            L"STATIC", L"最大字节:", WS_CHILD | WS_VISIBLE | SS_LEFT,
+            0, 0, 0, 0, window,
+            reinterpret_cast<HMENU>(IDC_MAX_SIZE_LABEL), nullptr, nullptr);
+        state->max_size_edit = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_AUTOHSCROLL,
+            0, 0, 0, 0, window,
+            reinterpret_cast<HMENU>(IDC_MAX_SIZE_EDIT), nullptr, nullptr);
         state->start_button = CreateWindowW(
             L"BUTTON", L"开始扫描", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
             0, 0, 0, 0, window, reinterpret_cast<HMENU>(IDC_START_BUTTON), nullptr, nullptr);
@@ -483,6 +556,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
         set_control_font(state->path_edit);
         set_control_font(state->browse_button);
         set_control_font(state->worker_edit);
+        set_control_font(state->extension_filter_label);
+        set_control_font(state->extension_filter_edit);
+        set_control_font(state->min_size_label);
+        set_control_font(state->min_size_edit);
+        set_control_font(state->max_size_label);
+        set_control_font(state->max_size_edit);
         set_control_font(state->start_button);
         set_control_font(state->status_label);
         set_control_font(state->progress_bar);
