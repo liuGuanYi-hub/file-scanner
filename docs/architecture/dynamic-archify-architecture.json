@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "C++ File Scanner",
+    "subtitle": "Thread-pool based Windows file scanning tool",
+    "output": "dynamic-archify-architecture.html"
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "Operator",
+      "sublabel": "Windows user",
+      "pos": [
+        30,
+        250
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "CLI",
+      "sublabel": "file_scanner",
+      "pos": [
+        250,
+        130
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "gui",
+      "type": "frontend",
+      "label": "Win32 GUI",
+      "sublabel": "progress + table",
+      "pos": [
+        250,
+        370
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "Scan Core",
+      "sublabel": "C++17 + ThreadPool",
+      "pos": [
+        500,
+        250
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "files",
+      "type": "database",
+      "label": "File System",
+      "sublabel": "recursive input",
+      "pos": [
+        780,
+        130
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "outputs",
+      "type": "database",
+      "label": "CSV + Logs",
+      "sublabel": "scan results",
+      "pos": [
+        780,
+        370
+      ],
+      "size": [
+        160,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Windows scanner",
+      "wraps": [
+        "cli",
+        "gui",
+        "core",
+        "files",
+        "outputs"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "user",
+      "to": "cli",
+      "label": "command",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "user",
+      "to": "gui",
+      "label": "open",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "cli",
+      "to": "core",
+      "label": "config",
+      "variant": "emphasis"
+    },
+    {
+      "from": "gui",
+      "to": "core",
+      "label": "config",
+      "variant": "emphasis"
+    },
+    {
+      "from": "core",
+      "to": "files",
+      "label": "scan",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "core",
+      "to": "outputs",
+      "label": "export",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "orthogonal-v"
+    }
+  ],
+  "cards": []
+}

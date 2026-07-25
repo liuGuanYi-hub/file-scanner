@@ -258,3 +258,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\release_check
 1. 完善自动化测试和压力测试。
 2. 增加修改时间过滤。
 3. 后续扩展数据库、网络和更丰富的 Windows API 能力。
+
+## 动态系统架构图
+
+![C++ 多线程文件扫描器动态系统架构图](docs/architecture/dynamic-archify-architecture.svg)
+
+- [打开交互式动态架构图](docs/architecture/dynamic-archify-architecture.html)
+- [查看架构源数据](docs/architecture/dynamic-archify-architecture.json)
