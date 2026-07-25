@@ -261,7 +261,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\release_check
 
 ## 动态系统架构图
 
-![C++ 多线程文件扫描器动态系统架构图](docs/architecture/dynamic-archify-architecture.svg)
+![C++ 多线程文件扫描器动态系统架构图](docs/architecture/dynamic-archify-architecture.gif)
 
 - [打开交互式动态架构图](docs/architecture/dynamic-archify-architecture.html)
 - [查看架构源数据](docs/architecture/dynamic-archify-architecture.json)
