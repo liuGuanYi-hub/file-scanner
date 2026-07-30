@@ -20,7 +20,9 @@
 #include <thread>
 #include <utility>
 
-#include "scan_engine.h"
+#include "scanner/domain/types.h"
+#include "scanner/domain/utilities.h"
+#include "scanner/infrastructure/file_scanner.h"
 
 namespace fs = std::filesystem;
 
@@ -93,7 +95,7 @@ struct GuiState {
 
 struct ScanMessage {
     bool success = false;
-    scanner::ScanResult result;
+    scanner::domain::ScanResult result;
     std::string error;
 };
 
@@ -219,7 +221,7 @@ void set_status(GuiState* state, const std::wstring& text) {
     SetWindowTextW(state->status_label, text.c_str());
 }
 
-std::wstring format_result(const scanner::ScanResult& result) {
+std::wstring format_result(const scanner::domain::ScanResult& result) {
     std::wostringstream output;
     output << L"扫描完成\r\n"
            << L"文件数: " << result.file_count << L"\r\n"
@@ -250,7 +252,7 @@ std::wstring format_result(const scanner::ScanResult& result) {
     return output.str();
 }
 
-void populate_extension_table(GuiState* state, const scanner::ScanResult& result) {
+void populate_extension_table(GuiState* state, const scanner::domain::ScanResult& result) {
     ListView_DeleteAllItems(state->extension_list);
 
     int index = 0;
@@ -347,20 +349,20 @@ void start_scan(HWND window, GuiState* state) {
 
     const std::wstring path_text = get_window_text(state->path_edit);
     std::size_t worker_count = 0;
-    scanner::FileFilter filter;
+    scanner::domain::FileFilter filter;
     try {
-        worker_count = scanner::parse_worker_count(get_window_text(state->worker_edit));
-        filter.extensions = scanner::parse_extensions(
+        worker_count = scanner::domain::parse_worker_count(get_window_text(state->worker_edit));
+        filter.extensions = scanner::domain::parse_extensions(
             get_window_text(state->extension_filter_edit));
 
         const std::wstring min_size_text = get_window_text(state->min_size_edit);
         if (!min_size_text.empty()) {
-            filter.min_size = scanner::parse_size_bytes(min_size_text);
+            filter.min_size = scanner::domain::parse_size_bytes(min_size_text);
         }
 
         const std::wstring max_size_text = get_window_text(state->max_size_edit);
         if (!max_size_text.empty()) {
-            filter.max_size = scanner::parse_size_bytes(max_size_text);
+            filter.max_size = scanner::domain::parse_size_bytes(max_size_text);
         }
         if (filter.min_size && filter.max_size &&
             *filter.min_size > *filter.max_size) {
@@ -388,14 +390,15 @@ void start_scan(HWND window, GuiState* state) {
 
     const fs::path root(path_text);
     state->worker = std::thread([window, state, root, worker_count, filter = std::move(filter)]() mutable {
+        scanner::infrastructure::FileScanner file_scanner(nullptr);
         try {
-            scanner::ScanOptions options;
+            scanner::domain::ScanOptions options;
             options.root = root;
             options.worker_count = worker_count;
             options.cancel = &state->cancel;
             options.discovered_files = &state->discovered_files;
             options.filter = std::move(filter);
-            auto result = scanner::scan_directory(options);
+            auto result = file_scanner.scan(options);
             auto* message = new ScanMessage();
             message->success = true;
             message->result = std::move(result);
