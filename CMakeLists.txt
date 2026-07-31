@@ -33,6 +33,8 @@ add_library(scanner_infrastructure STATIC
     src/scanner/infrastructure/duplicate_finder.cpp
     src/scanner/infrastructure/database_storage.cpp
     src/scanner/infrastructure/json_exporter.cpp
+    src/scanner/infrastructure/file_watcher.cpp
+    src/scanner/infrastructure/file_cleaner.cpp
 )
 target_include_directories(scanner_infrastructure PUBLIC include)
 target_link_libraries(scanner_infrastructure PUBLIC scanner_application)

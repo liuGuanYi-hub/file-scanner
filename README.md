@@ -1,34 +1,31 @@
-# C++ 多线程文件扫描器
+# C++ 多线程文件扫描器 v2.0
 
-一个面向 C++ 开发实习准备的 Windows 命令行工具项目，用于练习 C++17、STL、文件系统、多线程、线程同步、CMake 和工程化文档。
+面向 C++ 开发实习准备的 Windows 桌面工具，v2.0 采用 Clean Architecture 三层架构，集成了重复文件检测、SQLite 持久化、JSON 输出和 Treemap 可视化。
 
 ## 项目状态
 
-当前版本为基础可运行版，已经完成：
+**v2.0 完成，已实现的全部功能：**
 
-- 递归扫描目录
-- 多线程文件处理
-- 线程安全任务队列
-- 有界任务队列和优雅关闭
-- 独立 `ThreadPool` 线程池模块
-- 文件数量、总大小和错误数统计
-- 文件扩展名统计
-- 扩展名和文件大小过滤
-- 匹配文件的路径、大小和扩展名元数据记录
-- 线程安全错误收集与可选日志文件输出
-- CSV 文件导出，支持 UTF-8 中文和特殊字符转义
-- 统一长参数/短参数配置和参数错误提示
-- 1/2/4/8 线程性能基准脚本和吞吐量统计
-- 可重复执行的 Windows smoke test 和完整验收清单
-- v1.0.0-demo 发布说明和面试总结
-- Windows 原生 Win32 GUI 页面
-- GUI 动态进度条、浅蓝色主题和扩展名统计表格
-- C++17 + CMake + Ninja 构建
-- 基础构建和运行截图
+### 核心扫描
+- 递归目录扫描 + 多线程文件处理
+- 有界线程池（生产者-消费者，队列背压）
+- 扩展名/文件大小过滤
+- 线程安全错误日志
+- CSV 导出（UTF-8 BOM）
+- 性能基准（1/2/4/8 线程）
 
-已提供可重复的 Windows smoke test；更大规模压力测试仍可继续扩展。
+### v2.0 新增
+- **架构**：Clean Architecture 三层分层（Domain/Application/Infrastructure）
+- **测试**：56 个单元测试，4 组，100% 通过
+- **CI/CD**：GitHub Actions 跨平台（Win/Mac/Linux）
+- **重复检测**：SHA256 三级策略（大小→64KB→完整文件）
+- **数据库**：SQLite 持久化（保存/加载/历史/对比）
+- **JSON 输出**：`--json` 结构化格式
+- **Treemap**：GUI 底部可视化面板，按扩展名着色
+- **文件监听**：ReadDirectoryChangesW 实时监听
+- **清理操作**：回收站 / 永久删除
 
-详细计划见：[docs/开发计划.md](docs/开发计划.md)
+详细更新见：[CHANGELOG.md](CHANGELOG.md) | 开发计划：[docs/开发计划.md](docs/开发计划.md)
 
 ## 技术栈
 
@@ -43,58 +40,47 @@
 
 ## 功能演示
 
-### 构建成功
+### v1.0 基础功能
 
 ![CMake 和 Ninja 构建成功](docs/screenshots/01-build-success.png)
 
-### 基础扫描
-
 ![基础目录扫描结果](docs/screenshots/02-basic-scan.png)
-
-### 线程池回归验证
 
 ![线程池多线程扫描结果](docs/screenshots/03-multithread-scan.png)
 
-### GUI 进度条、主题和扩展名表格
-
 ![GUI 进度条、颜色主题和扩展名统计表格](docs/screenshots/08-gui-progress-theme-table.png)
+
+### v2.0 新功能（截图待捕获）
+
+| 功能 | 截图 | 捕获命令 |
+|------|------|----------|
+| 测试结果 | `09-v2-test-results.png` | `ctest --test-dir build --output-on-failure` |
+| 帮助信息 | `10-v2-help.png` | `file_scanner.exe --help` |
+| 重复检测 | `11-v2-dupes.png` | `file_scanner.exe . 4 --dupes` |
+| JSON 输出 | `12-v2-json.png` | `file_scanner.exe . 4 --json output.json` |
+| 历史列表 | `13-v2-db-list.png` | `file_scanner.exe --db scan.db --list-scans` |
+| 扫描对比 | `14-v2-compare.png` | `file_scanner.exe . 4 --db scan.db --compare <id>` |
+| GUI Treemap | `15-v2-gui-treemap.png` | 双击 `file_scanner_gui.exe` 扫描后截图 |
+| 全功能综合 | `16-v2-cli-all.png` | 所有选项同时启用 |
+
+> 截图规范见 [docs/screenshots/README.md](docs/screenshots/README.md)
 
 ## 项目结构
 
 ```text
 .
-├── .vscode/
-├── docs/
-│   ├── 开发计划.md
-│   ├── 发布说明.md
-│   ├── 面试总结.md
-│   └── screenshots/
-│       ├── README.md
-│       ├── 01-build-success.png
-│       ├── 02-basic-scan.png
-│       ├── 03-multithread-scan.png
-│       └── 08-gui-progress-theme-table.png
-├── include/
-│   ├── csv_exporter.h
-│   ├── error_logger.h
-│   ├── scan_engine.h
-│   └── thread_pool.h
-├── src/
-│   ├── csv_exporter.cpp
-│   ├── error_logger.cpp
-│   ├── main.cpp
-│   ├── gui_main_win32.cpp
-│   ├── scan_engine.cpp
-│   └── thread_pool.cpp
+├── .github/workflows/ci.yml    # GitHub Actions 跨平台 CI
+├── .clang-format               # 代码规范
+├── CHANGELOG.md                # 版本变更记录
+├── Doxyfile                    # API 文档生成
+├── include/scanner/
+│   ├── domain/                 # 核心数据类型 + 纯函数
+│   ├── application/            # 接口定义 + 线程池
+│   └── infrastructure/         # 具体实现
+├── src/scanner/                # （同上的三层结构）
+├── tests/                      # 56 个单元测试
 ├── scripts/
-│   ├── benchmark.ps1
-│   └── release_check.ps1
-├── tests/
-│   ├── README.md
-│   └── smoke_tests.ps1
-├── CMakeLists.txt
-├── README.md
-└── .gitignore
+└── docs/
 ```
 
 ## 编译
@@ -155,6 +141,26 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\benchmark.ps1
 
 GUI 页面支持选择扫描目录、设置线程数、输入扩展名过滤和最小/最大文件字节数，再启动后台扫描；完成后在浅蓝色主题页面中展示文件数量、总大小、错误数和包含扩展名、文件数、占比的统计表格。也可以在 VS Code 的“运行和调试”配置中选择“启动文件扫描器 GUI”。
 
+### v2.0 新增功能
+
+```powershell
+# 查看完整帮助
+.\build\file_scanner.exe --help
+
+# 重复文件检测
+.\build\file_scanner.exe . 4 --dupes
+
+# JSON 格式输出
+.\build\file_scanner.exe . 4 --json .\output\scan.json
+
+# SQLite 数据库保存 + 查看历史
+.\build\file_scanner.exe . 4 --db .\output\scan.db
+.\build\file_scanner.exe --db .\output\scan.db --list-scans
+
+# 扫描历史对比
+.\build\file_scanner.exe . 4 --db .\output\scan.db --compare <scan_id>
+```
+
 参数说明：
 
 1. 第一个位置参数是扫描目录，省略时扫描当前目录；也可以使用 `--path`。
@@ -189,40 +195,27 @@ GUI 页面支持选择扫描目录、设置线程数、输入扩展名过滤和�
 
 ## 测试结果
 
-基础验证命令：
+### 单元测试 (v2.0)
 
 ```powershell
-cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-.\build\file_scanner.exe . 4
+ctest --test-dir build --output-on-failure
 ```
 
-当前基础验证结果：
+| 测试组 | 用例数 | 结果 |
+|--------|--------|:--:|
+| test_domain_utilities | 22 | ✅ |
+| test_thread_pool | 13 | ✅ |
+| test_csv_exporter | 9 | ✅ |
+| test_file_scanner | 12 | ✅ |
+| **合计** | **56** | **100%** |
 
-- 编译成功
-- 程序正常退出
-- 扫描文件数和扩展名统计正常
-- 错误数为 0
-- 多线程参数可用
-- 中文非法目录能够返回可读错误并以退出码 1 结束
-- 1、4、64 线程扫描结果一致
-- 有界队列不会丢失任务，关闭后工作线程能够正常退出
-- 扩展名过滤、最小/最大字节过滤结果与文件实际大小一致
-- 非法目录会返回明确错误，并在指定 `--log` 时写入带时间、路径和原因的日志
-- 扫描过程中的可恢复错误会继续处理其他任务，CLI 和 GUI 展示最多 10 条错误详情
-- CSV 导出记录数与元数据记录数一致，路径和扩展名字段遵循 CSV 转义规则
-- 长短参数、位置参数、缺少参数值、空路径、线程数边界和未知参数均已验证
-- 性能脚本已验证默认 4 组线程、重复运行结果一致，且 `output/benchmark.csv` 行数为 4
-
-完整 smoke test：
+### Smoke test (v1.0)
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\tests\smoke_tests.ps1"
 ```
 
-测试脚本覆盖基础扫描、1/4/64 线程一致性、空目录、非法目录、过滤、CSV、日志、参数边界、1/2/4/8 性能脚本和 GUI 启动；最近一次结果为 `Passed: 8  Failed: 0`。
-
-详细测试说明见：[tests/README.md](tests/README.md)。
+> 最近结果：`Passed: 8  Failed: 0`
 
 ## 演示版交付与面试准备
 
@@ -255,9 +248,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\release_check
 
 ## 后续路线
 
-1. 完善自动化测试和压力测试。
-2. 增加修改时间过滤。
-3. 后续扩展数据库、网络和更丰富的 Windows API 能力。
+v2.0 15 天计划已全部完成。未来可选方向：
+
+- 跨平台 GUI（Qt6 / imgui）
+- TCP 远程扫描代理（gRPC）
+- DLL 插件系统
+- 增量扫描（inotify/FSEvents 驱动）
+- 文件哈希缓存加速
 
 ## 动态系统架构图
 

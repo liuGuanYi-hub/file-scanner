@@ -1,0 +1,33 @@
+# Doxygen 配置文件
+# 生成命令: doxygen Doxyfile
+
+PROJECT_NAME           = "C++ 多线程文件扫描器"
+PROJECT_NUMBER         = 2.0.0
+PROJECT_BRIEF          = "多线程文件扫描与分析工具"
+
+OUTPUT_DIRECTORY       = docs/api
+OUTPUT_LANGUAGE        = Chinese
+
+INPUT                  = include/ src/
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h *.cpp
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+
+HTML_OUTPUT            = html
+HTML_DYNAMIC_SECTIONS  = YES
+
+# 忽略构建目录
+EXCLUDE                = build/ build-cmake-check/ tests/
+EXCLUDE_PATTERNS       = */build/* */tests/*
+
+# 启用调用图
+HAVE_DOT               = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
