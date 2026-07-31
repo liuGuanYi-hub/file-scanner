@@ -80,9 +80,24 @@ if (MINGW)
     # 宽字符入口（Windows Unicode 支持）
     target_link_options(file_scanner PRIVATE -municode)
     target_link_options(file_scanner_gui PRIVATE -municode)
-    # 静态链接 C++ 标准库和 GCC 运行时，消除 DLL 依赖
+    # 静态链接 C++ 标准库和 GCC 运行时
     target_link_options(file_scanner PRIVATE -static-libstdc++ -static-libgcc)
     target_link_options(file_scanner_gui PRIVATE -static-libstdc++ -static-libgcc)
+
+    # 复制 libwinpthread-1.dll 到构建目录（clock_gettime64 需要）
+    # GCC 链接器无法静态链接 winpthread，需要运行时 DLL
+    add_custom_command(TARGET file_scanner POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "F:/msys64/ucrt64/bin/libwinpthread-1.dll"
+            $<TARGET_FILE_DIR:file_scanner>
+        COMMENT "Copying libwinpthread-1.dll"
+    )
+    add_custom_command(TARGET file_scanner_gui POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "F:/msys64/ucrt64/bin/libwinpthread-1.dll"
+            $<TARGET_FILE_DIR:file_scanner_gui>
+        COMMENT "Copying libwinpthread-1.dll"
+    )
 endif()
 
 # ============================================================
