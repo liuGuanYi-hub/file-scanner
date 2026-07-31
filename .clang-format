@@ -1,0 +1,42 @@
+# clang-format 配置 — 基于 Google C++ Style Guide
+# 运行: clang-format -i src/**/*.cpp include/**/*.h
+
+Language: Cpp
+BasedOnStyle: Google
+
+# 缩进
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# 列宽
+ColumnLimit: 100
+
+# 大括号
+BreakBeforeBraces: Attach
+
+# 指针和引用
+PointerAlignment: Left
+
+# 行末空格
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# 包含排序
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+
+# 命名空间
+NamespaceIndentation: None
+
+# 对齐
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+
+# 空格
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+
+# 空行
+MaxEmptyLinesToKeep: 1

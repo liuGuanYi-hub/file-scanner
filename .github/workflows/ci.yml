@@ -1,0 +1,74 @@
+# C++ 多线程文件扫描器 CI/CD 流水线
+# 触发条件: push 到 main 分支 + PR 到 main
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+        build_type: [Release]
+        include:
+          - os: ubuntu-24.04
+            cmake_generator: "Unix Makefiles"
+            cmake_extra: ""
+          - os: macos-15
+            cmake_generator: "Unix Makefiles"
+            cmake_extra: ""
+          - os: windows-2025
+            cmake_generator: "MinGW Makefiles"
+            cmake_extra: "-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 (Windows only)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++
+
+      - name: Install macOS Dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configure (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        run: cmake --build build --config Release
+
+      - name: Test
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        run: ctest --test-dir build --output-on-failure

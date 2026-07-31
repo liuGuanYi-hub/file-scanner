@@ -30,9 +30,20 @@ add_library(scanner_infrastructure STATIC
     src/scanner/infrastructure/file_scanner.cpp
     src/scanner/infrastructure/csv_exporter.cpp
     src/scanner/infrastructure/error_logger.cpp
+    src/scanner/infrastructure/duplicate_finder.cpp
+    src/scanner/infrastructure/database_storage.cpp
+    src/scanner/infrastructure/json_exporter.cpp
 )
 target_include_directories(scanner_infrastructure PUBLIC include)
 target_link_libraries(scanner_infrastructure PUBLIC scanner_application)
+
+# 查找并链接 OpenSSL (SHA256)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(scanner_infrastructure PRIVATE OpenSSL::Crypto)
+
+# 查找并链接 SQLite
+find_package(SQLite3 REQUIRED)
+target_link_libraries(scanner_infrastructure PRIVATE SQLite3::SQLite3)
 
 # ============================================================
 # 可执行文件
@@ -64,6 +75,31 @@ set_scanner_warnings(file_scanner)
 set_scanner_warnings(file_scanner_gui)
 
 if (MINGW)
+    # 宽字符入口（Windows Unicode 支持）
     target_link_options(file_scanner PRIVATE -municode)
     target_link_options(file_scanner_gui PRIVATE -municode)
+    # 静态链接 C++ 标准库和 GCC 运行时，消除 DLL 依赖
+    target_link_options(file_scanner PRIVATE -static-libstdc++ -static-libgcc)
+    target_link_options(file_scanner_gui PRIVATE -static-libstdc++ -static-libgcc)
 endif()
+
+# ============================================================
+# 测试（自包含测试框架，无需外部依赖）
+# ============================================================
+enable_testing()
+
+function(add_scanner_test test_name test_source)
+    add_executable(${test_name} ${test_source} tests/minitest.cpp)
+    target_link_libraries(${test_name} PRIVATE scanner_infrastructure)
+    target_include_directories(${test_name} PRIVATE include tests)
+    if (MINGW)
+        target_link_options(${test_name} PRIVATE -static-libstdc++ -static-libgcc)
+    endif()
+    set_scanner_warnings(${test_name})
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endfunction()
+
+add_scanner_test(test_domain_utilities tests/test_domain_utilities.cpp)
+add_scanner_test(test_thread_pool tests/test_thread_pool.cpp)
+add_scanner_test(test_csv_exporter tests/test_csv_exporter.cpp)
+add_scanner_test(test_file_scanner tests/test_file_scanner.cpp)

@@ -29,8 +29,8 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr wchar_t kWindowClassName[] = L"CppFileScannerWindow";
-constexpr int kWindowWidth = 780;
-constexpr int kWindowHeight = 580;
+constexpr int kWindowWidth = 980;
+constexpr int kWindowHeight = 620;
 
 constexpr int IDC_PATH_EDIT = 1001;
 constexpr int IDC_BROWSE_BUTTON = 1002;
@@ -50,6 +50,7 @@ constexpr int IDC_MIN_SIZE_LABEL = 1015;
 constexpr int IDC_MIN_SIZE_EDIT = 1016;
 constexpr int IDC_MAX_SIZE_LABEL = 1017;
 constexpr int IDC_MAX_SIZE_EDIT = 1018;
+constexpr int IDC_TREEMAP = 1019;
 constexpr UINT_PTR kProgressTimer = 1;
 constexpr UINT WM_SCAN_COMPLETE = WM_APP + 1;
 
@@ -91,6 +92,10 @@ struct GuiState {
     std::atomic_bool closing{false};
     std::atomic<std::uint64_t> discovered_files{0};
     std::thread worker;
+
+    // Treemap 数据
+    HWND treemap = nullptr;
+    std::vector<scanner::domain::FileMetadata> treemap_data;
 };
 
 struct ScanMessage {
@@ -215,6 +220,12 @@ void layout_controls(HWND window, GuiState* state) {
         state->extension_list,
         2,
         std::max(70, table_width - extension_column_width - count_column_width));
+
+    // Treemap 布局（底部全宽区域）
+    const int treemap_top = result_top + 24 + result_height + 12;
+    const int treemap_height = std::max(120, height - treemap_top - 12);
+    MoveWindow(state->treemap, margin, treemap_top,
+               width - margin * 2, treemap_height, TRUE);
 }
 
 void set_status(GuiState* state, const std::wstring& text) {
@@ -430,6 +441,9 @@ void handle_scan_complete(HWND window, GuiState* state, ScanMessage* message) {
     if (message->success) {
         SetWindowTextW(state->result_edit, format_result(message->result).c_str());
         populate_extension_table(state, message->result);
+        // 更新 Treemap 数据
+        state->treemap_data = message->result.files;
+        InvalidateRect(state->treemap, nullptr, TRUE);
         if (message->result.cancelled) {
             set_status(state, L"扫描已停止");
         } else if (message->result.error_count > 0) {
@@ -446,6 +460,101 @@ void handle_scan_complete(HWND window, GuiState* state, ScanMessage* message) {
     }
 
     delete message;
+}
+
+// === Treemap 窗口过程 ===
+LRESULT CALLBACK treemap_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    GuiState* state = reinterpret_cast<GuiState*>(GetWindowLongPtrW(GetParent(hwnd), GWLP_USERDATA));
+
+    if (msg == WM_PAINT && state) {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc; GetClientRect(hwnd, &rc);
+        int w = rc.right - rc.left, h = rc.bottom - rc.top;
+
+        // 背景
+        HBRUSH bg = CreateSolidBrush(RGB(255, 255, 255));
+        FillRect(hdc, &rc, bg);
+        DeleteObject(bg);
+
+        auto& data = state->treemap_data;
+        if (data.empty()) {
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, RGB(150, 150, 150));
+            DrawTextW(hdc, L"扫描完成后显示磁盘占用 Treemap", -1, &rc,
+                      DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        } else if (w > 10 && h > 10) {
+            // 按扩展名分组并计算总大小
+            std::map<std::string, std::uintmax_t> ext_sizes;
+            std::uintmax_t total = 0;
+            for (const auto& f : data) { ext_sizes[f.extension] += f.size; total += f.size; }
+            if (total == 0) total = 1;
+
+            // 按大小排序
+            std::vector<std::pair<std::string, std::uintmax_t>> sorted;
+            for (const auto& [ext, sz] : ext_sizes) sorted.push_back({ext, sz});
+            std::sort(sorted.begin(), sorted.end(),
+                      [](auto& a, auto& b) { return a.second > b.second; });
+
+            // 颜色表
+            static const COLORREF kColors[] = {
+                RGB(37, 99, 235), RGB(239, 68, 68), RGB(34, 197, 94),
+                RGB(251, 191, 36), RGB(168, 85, 247), RGB(236, 72, 153),
+                RGB(20, 184, 166), RGB(249, 115, 22)
+            };
+            const int kNumColors = sizeof(kColors) / sizeof(kColors[0]);
+
+            // Slice-and-dice 布局
+            double x = 2, y = 2;
+            double tw = w - 4, th = h - 4;
+            int ci = 0;
+
+            for (const auto& [ext, sz] : sorted) {
+                double ratio = static_cast<double>(sz) / static_cast<double>(total);
+                double area = tw * th * ratio;
+                double bw, bh;
+
+                if (tw > th) { bw = area / th; bh = th; }
+                else { bh = area / tw; bw = tw; }
+
+                if (bw < 2 || bh < 2) continue;
+
+                RECT r = {static_cast<int>(x), static_cast<int>(y),
+                          static_cast<int>(x + bw), static_cast<int>(y + bh)};
+
+                HBRUSH brush = CreateSolidBrush(kColors[ci % kNumColors]);
+                FillRect(hdc, &r, brush);
+                DeleteObject(brush);
+
+                // 边框
+                FrameRect(hdc, &r, reinterpret_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+
+                // 标签（只在空间够大时绘制）
+                if (bw > 40 && bh > 20) {
+                    SetBkMode(hdc, TRANSPARENT);
+                    SetTextColor(hdc, RGB(255, 255, 255));
+                    std::wstring label;
+                    label.reserve(ext.size() + 32);
+                    for (char c : ext) label.push_back(static_cast<wchar_t>(c));
+                    label += L" ";
+                    label += std::to_wstring(static_cast<int>(ratio * 100));
+                    label += L"%";
+                    RECT lr = r; lr.left += 4; lr.top += 2;
+                    DrawTextW(hdc, label.c_str(), -1, &lr, DT_LEFT | DT_TOP | DT_SINGLELINE);
+                }
+
+                // 更新剩余空间
+                if (tw > th) { x += bw; tw -= bw; }
+                else { y += bh; th -= bh; }
+                total -= sz;
+                ++ci;
+            }
+        }
+
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
@@ -591,6 +700,14 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
         set_control_font(state->progress_bar);
         set_control_font(state->result_edit);
         set_control_font(state->extension_list);
+
+        // 创建 Treemap 面板
+        state->treemap = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"TreemapPanel", L"",
+            WS_CHILD | WS_VISIBLE | WS_BORDER,
+            0, 0, 0, 0, window,
+            reinterpret_cast<HMENU>(IDC_TREEMAP),
+            GetModuleHandleW(nullptr), nullptr);
 
         std::wstring current_path(MAX_PATH, L'\0');
         const DWORD length = GetCurrentDirectoryW(
@@ -741,6 +858,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command) {
         CoUninitialize();
         return 1;
     }
+
+    // 注册 Treemap 窗口类
+    WNDCLASSW tm_class{};
+    tm_class.hInstance = instance;
+    tm_class.lpfnWndProc = treemap_proc;
+    tm_class.lpszClassName = L"TreemapPanel";
+    tm_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    tm_class.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    RegisterClassW(&tm_class);
 
     auto* state = new GuiState();
     HWND window = CreateWindowExW(
