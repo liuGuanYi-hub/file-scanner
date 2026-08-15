@@ -19,6 +19,7 @@ target_include_directories(scanner_domain PUBLIC include)
 # ============================================================
 add_library(scanner_application STATIC
     src/scanner/application/thread_pool.cpp
+    src/scanner/application/tool_registry.cpp
 )
 target_include_directories(scanner_application PUBLIC include)
 target_link_libraries(scanner_application PUBLIC scanner_domain)
@@ -35,6 +36,7 @@ add_library(scanner_infrastructure STATIC
     src/scanner/infrastructure/json_exporter.cpp
     src/scanner/infrastructure/file_watcher.cpp
     src/scanner/infrastructure/file_cleaner.cpp
+    src/scanner/infrastructure/tool_factories.cpp
 )
 target_include_directories(scanner_infrastructure PUBLIC include)
 target_link_libraries(scanner_infrastructure PUBLIC scanner_application)
@@ -140,3 +142,4 @@ add_scanner_test(test_csv_exporter tests/test_csv_exporter.cpp)
 add_scanner_test(test_file_scanner tests/test_file_scanner.cpp)
 add_scanner_test(test_duplicate_finder tests/test_duplicate_finder.cpp)
 add_scanner_test(test_file_cleaner tests/test_file_cleaner.cpp)
+add_scanner_test(test_tool_registry tests/test_tool_registry.cpp)
