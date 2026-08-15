@@ -79,15 +79,17 @@ std::string DuplicateFinder::hash_file(const fs::path& path, bool partial) {
 }
 
 std::vector<DuplicateGroup> DuplicateFinder::find(
-    const fs::path& root, std::size_t worker_count) {
+    const fs::path& root, std::size_t worker_count, DuplicateMode mode) {
     if (worker_count == 0 || worker_count > 64) {
         throw std::invalid_argument("线程数必须是 1 到 64 之间的整数");
     }
 
     // ============================================================
-    // 第 1 步：遍历目录，按文件大小分组
+    // 第 1 步：遍历目录，按 大小（Content）或 文件名+大小（NameAndSize）分组
     // ============================================================
-    // size -> {path, path, ...}
+    // Content:    size -> {path, path, ...}
+    // NameAndSize: (filename, size) -> {path, path, ...}  （零 I/O 预筛）
+    std::map<std::pair<std::string, std::uintmax_t>, std::vector<fs::path>> name_size_groups;
     std::map<std::uintmax_t, std::vector<fs::path>> size_groups;
 
     std::error_code ec;
@@ -103,21 +105,35 @@ std::vector<DuplicateGroup> DuplicateFinder::find(
         if (it->is_regular_file(entry_ec)) {
             std::error_code size_ec;
             auto size = fs::file_size(it->path(), size_ec);
-            if (!size_ec) {
+            if (size_ec) continue;
+            if (mode == DuplicateMode::NameAndSize) {
+                std::string name = it->path().filename().u8string();
+                name_size_groups[{name, size}].push_back(it->path());
+            } else {
                 size_groups[size].push_back(it->path());
             }
         }
     }
 
+    // 统一转成候选组集合：每组内文件数 >= 2 才需要进一步哈希
+    std::vector<std::vector<fs::path>> candidate_groups;
+    if (mode == DuplicateMode::NameAndSize) {
+        for (auto& [key, paths] : name_size_groups) {
+            if (paths.size() >= 2) candidate_groups.push_back(std::move(paths));
+        }
+    } else {
+        for (auto& [size, paths] : size_groups) {
+            if (paths.size() >= 2) candidate_groups.push_back(std::move(paths));
+        }
+    }
+
     // ============================================================
-    // 第 2 步：对同大小的文件组计算前 64KB 哈希
+    // 第 2 步：对候选组计算前 64KB 哈希
     // ============================================================
     // partial_hash -> {path, path, ...}
     std::map<std::string, std::vector<fs::path>> partial_hash_groups;
 
-    for (auto& [size, paths] : size_groups) {
-        if (paths.size() < 2) continue;  // 唯一文件，不可能是重复
-
+    for (auto& paths : candidate_groups) {
         for (const auto& p : paths) {
             auto hash = hash_file(p, true);
             if (!hash.empty()) {

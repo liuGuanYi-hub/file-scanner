@@ -15,9 +15,20 @@ struct DuplicateGroup {
     std::vector<std::string> paths;
 };
 
+// === 重复文件检测模式 ===
+// 对标 czkawka 的 CheckingMethod（Name/SizeName/Size/Hash）：
+//   Content    — 按内容查重（默认）：大小 → 64KB 预哈希 → 完整哈希
+//                能找到所有内容相同的文件（含不同文件名）
+//   NameAndSize— 快速模式：文件名 + 大小 → 64KB 预哈希 → 完整哈希
+//                零 I/O 预筛，适合"同名文件散落在不同目录"的场景
+enum class DuplicateMode {
+    Content,      // 按内容查重（最精确，默认）
+    NameAndSize,  // 按 文件名+大小 查重（最快，可能漏掉改名文件）
+};
+
 // === 重复文件检测器 ===
 // 三级检测策略：
-//   1. 按文件大小分组
+//   1. 按文件大小分组（或 文件名+大小）
 //   2. 相同大小的计算前 64KB 的 SHA256 哈希
 //   3. 相同哈希的计算完整文件 SHA256
 class DuplicateFinder {
@@ -26,7 +37,8 @@ public:
     // 每个组包含 2 个或以上相同内容的文件
     std::vector<DuplicateGroup> find(
         const std::filesystem::path& root,
-        std::size_t worker_count = 1);
+        std::size_t worker_count = 1,
+        DuplicateMode mode = DuplicateMode::Content);
 
 private:
     // 计算文件的 SHA256 哈希
