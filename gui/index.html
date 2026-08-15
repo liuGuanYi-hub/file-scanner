@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>文件扫描器 v2.0</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI','Microsoft YaHei',-apple-system,sans-serif;
+  background:linear-gradient(135deg,#0f0c29 0%,#302b63 50%,#24243e 100%);
+  min-height:100vh;display:flex;justify-content:center;align-items:center;
+  padding:20px;color:#e8e8ed
+}
+.container{max-width:960px;width:100%}
+
+/* 标题 */
+h1{
+  font-size:28px;font-weight:700;text-align:center;
+  background:linear-gradient(135deg,#a78bfa,#60a5fa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  margin-bottom:24px;letter-spacing:-0.5px
+}
+
+/* 玻璃卡片 */
+.card{
+  background:rgba(255,255,255,0.06);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:20px;padding:28px;margin-bottom:16px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.3)
+}
+.card-title{
+  font-size:13px;font-weight:600;text-transform:uppercase;
+  letter-spacing:1px;color:#a0a0b8;margin-bottom:20px
+}
+
+/* 表单网格 */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-full{grid-column:1/-1}
+.form-group{display:flex;flex-direction:column;gap:6px}
+.form-group label{font-size:12px;color:#a0a0b8;font-weight:500}
+.form-group input{
+  background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);
+  border-radius:12px;padding:12px 16px;color:#fff;font-size:14px;
+  outline:none;transition:all 0.2s
+}
+.form-group input:focus{
+  border-color:#818cf8;box-shadow:0 0 0 3px rgba(129,140,248,0.2);
+  background:rgba(255,255,255,0.12)
+}
+.form-group input::placeholder{color:#666}
+
+/* 按钮 */
+.btn{
+  border:none;border-radius:14px;padding:14px 28px;font-size:14px;
+  font-weight:600;cursor:pointer;transition:all 0.25s;letter-spacing:0.3px;
+  display:flex;align-items:center;justify-content:center;gap:8px
+}
+.btn-primary{
+  background:linear-gradient(135deg,#818cf8,#6366f1);
+  color:#fff;box-shadow:0 4px 15px rgba(99,102,241,0.4)
+}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(99,102,241,0.5)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary:disabled{
+  opacity:0.5;cursor:not-allowed;transform:none;box-shadow:none
+}
+.btn-outline{
+  background:rgba(255,255,255,0.06);color:#c4c4d8;
+  border:1px solid rgba(255,255,255,0.12)
+}
+.btn-outline:hover{background:rgba(255,255,255,0.12);color:#fff}
+
+.btn-row{display:flex;gap:12px;align-items:center}
+.btn-row .btn{flex:1}
+
+/* 状态栏 */
+.status{
+  text-align:center;padding:8px;font-size:13px;color:#a0a0b8;
+  display:flex;align-items:center;justify-content:center;gap:8px
+}
+.spinner{
+  width:16px;height:16px;border:2px solid rgba(255,255,255,0.2);
+  border-top:2px solid #818cf8;border-radius:50%;
+  animation:spin 0.8s linear infinite;display:none
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 进度条 */
+.progress-bar{
+  height:4px;background:rgba(255,255,255,0.08);border-radius:2px;
+  overflow:hidden;margin-top:12px
+}
+.progress-fill{
+  height:100%;background:linear-gradient(90deg,#818cf8,#6366f1);
+  border-radius:2px;transition:width 0.3s;width:0%
+}
+
+/* 结果区 */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat-card{
+  background:rgba(255,255,255,0.04);border-radius:14px;
+  padding:16px;text-align:center;border:1px solid rgba(255,255,255,0.06)
+}
+.stat-value{font-size:26px;font-weight:700;background:linear-gradient(135deg,#a78bfa,#60a5fa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat-label{font-size:11px;color:#888;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px}
+
+/* 扩展名表格 */
+.ext-table{width:100%;border-collapse:collapse;margin-top:12px}
+.ext-table th{
+  text-align:left;font-size:11px;color:#888;font-weight:600;
+  padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.08);
+  text-transform:uppercase;letter-spacing:0.5px
+}
+.ext-table td{
+  padding:10px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04)
+}
+.ext-table tr:hover td{background:rgba(255,255,255,0.04)}
+.ext-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}
+
+/* Treemap */
+#treemap{height:240px;border-radius:14px;overflow:hidden;
+  background:rgba(0,0,0,0.2);margin-top:16px;position:relative}
+.tm-rect{
+  position:absolute;border:2px solid rgba(0,0,0,0.3);
+  display:flex;align-items:flex-start;padding:6px 8px;
+  font-size:11px;font-weight:500;overflow:hidden;white-space:nowrap;
+  transition:transform 0.15s
+}
+.tm-rect:hover{transform:scale(1.02) translateZ(0);z-index:10}
+.tm-rect small{opacity:0.8;margin-left:4px}
+
+/* 文件列表 */
+.file-list{max-height:300px;overflow-y:auto;border-radius:12px;
+  background:rgba(255,255,255,0.03);padding:4px}
+.file-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 12px;border-radius:8px;font-size:12px
+}
+.file-item:hover{background:rgba(255,255,255,0.06)}
+.file-path{color:#c4c4d8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.file-size{color:#888;margin-left:16px;flex-shrink:0}
+.file-ext-badge{
+  padding:2px 8px;border-radius:6px;font-size:11px;
+  background:rgba(129,140,248,0.2);color:#a78bfa;margin-left:12px;flex-shrink:0
+}
+
+/* 对比视图 */
+.diff-added{color:#34d399}
+.diff-removed{color:#f87171}
+.diff-modified{color:#fbbf24}
+.changes-row{display:flex;gap:24px;font-size:13px}
+
+/* 隐藏 */
+.hidden{display:none!important}
+
+/* 滚动条 */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📂 文件扫描器 v2.0</h1>
+
+<!-- 控制面板 -->
+<div class="card">
+  <div class="card-title">扫描设置</div>
+  <div class="form-grid">
+    <div class="form-group form-full">
+      <label>扫描目录</label>
+      <input type="text" id="path" placeholder="D:\项目" value="D:\zzd_project">
+      <input type="file" id="dirPicker" webkitdirectory style="display:none">
+      <button class="btn btn-outline" onclick="pickDir()" style="position:absolute;right:32px;top:36px;padding:6px 12px;font-size:12px">浏览</button>
+    </div>
+    <div class="form-group">
+      <label>线程数</label>
+      <input type="number" id="threads" value="4" min="1" max="64">
+    </div>
+    <div class="form-group">
+      <label>扩展名过滤 (如 .cpp,.h)</label>
+      <input type="text" id="ext" placeholder="可选">
+    </div>
+  </div>
+  <div class="btn-row" style="margin-top:20px">
+    <button class="btn btn-primary" id="scanBtn" onclick="startScan()">
+      <span>🔍</span> 开始扫描
+    </button>
+    <button class="btn btn-outline" id="stopBtn" onclick="stopScan()" disabled>
+      停止
+    </button>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="status" id="status">
+    <div class="spinner" id="spinner"></div>
+    <span id="statusText">准备就绪</span>
+  </div>
+</div>
+
+<!-- 结果: 统计卡片 -->
+<div id="results" class="hidden">
+  <div class="stats-grid" id="statsGrid"></div>
+
+  <!-- 扩展名表格 + Treemap -->
+  <div class="card">
+    <div class="card-title">扩展名分布</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <table class="ext-table" id="extTable"><tbody></tbody></table>
+      <div id="treemap"></div>
+    </div>
+  </div>
+
+  <!-- 文件列表 -->
+  <div class="card" id="fileListCard">
+    <div class="card-title">文件列表 <span style="font-weight:400;color:#888" id="fileCount"></span></div>
+    <div class="file-list" id="fileList"></div>
+    <div style="margin-top:12px;display:flex;gap:12px">
+      <button class="btn btn-outline" onclick="exportCSV()">��出 CSV</button>
+      <button class="btn btn-outline" onclick="exportJSON()">导出 JSON</button>
+      <button class="btn btn-outline" onclick="saveDB()">保存到数据库</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+let scanData=null,scanRunning=false;
+
+function pickDir(){
+  const picker=document.createElement('input');
+  picker.type='file';picker.webkitdirectory=true;
+  picker.onchange=e=>{if(e.target.files.length)document.getElementById('path').value=e.target.files[0].webkitRelativePath.split('/')[0]};
+  picker.click();
+}
+
+function setStatus(text,spinning=false){
+  document.getElementById('statusText').textContent=text;
+  document.getElementById('spinner').style.display=spinning?'inline-block':'none';
+}
+
+async function startScan(){
+  const path=document.getElementById('path').value.trim();
+  const threads=document.getElementById('threads').value||'4';
+  const ext=document.getElementById('ext').value.trim();
+  if(!path)return alert('请输入扫描目录');
+
+  scanRunning=true;
+  document.getElementById('scanBtn').disabled=true;
+  document.getElementById('stopBtn').disabled=false;
+  document.getElementById('progressFill').style.width='60%';
+  setStatus('扫描中...',true);
+
+  try{
+    const params=new URLSearchParams({path,threads,ext});
+    const resp=await fetch('/api/scan?'+params);
+    scanData=await resp.json();
+    renderResults(scanData);
+    setStatus('扫描完成');
+  }catch(e){
+    setStatus('连接失败: '+e.message+' (后端未运行)');
+    // 演示模式：显示假数据
+    showDemo();
+  }
+  document.getElementById('scanBtn').disabled=false;
+  document.getElementById('stopBtn').disabled=true;
+  document.getElementById('progressFill').style.width='100%';
+  scanRunning=false;
+}
+
+function stopScan(){
+  fetch('/api/stop');scanRunning=false;setStatus('已停止');
+}
+
+function renderResults(data){
+  document.getElementById('results').classList.remove('hidden');
+
+  // 统计卡片
+  const stats=[
+    {v:data.file_count,l:'文件数',c:''},
+    {v:(data.total_bytes/1024/1024).toFixed(1)+' MB',l:'总大小',c:''},
+    {v:data.error_count,l:'错误',c:data.error_count>0?'color:#f87171':''},
+    {v:data.elapsed_seconds.toFixed(2)+'s',l:'耗时',c:''}
+  ];
+  document.getElementById('statsGrid').innerHTML=stats.map(s=>
+    `<div class="stat-card"><div class="stat-value" style="${s.c}">${s.v}</div><div class="stat-label">${s.l}</div></div>`
+  ).join('');
+
+  // 扩展名表格 + Treemap
+  const exts=Object.entries(data.extensions||{});
+  exts.sort((a,b)=>b[1]-a[1]);
+  const colors=['#818cf8','#f472b6','#34d399','#fbbf24','#fb923c','#38bdf8','#a78bfa','#f87171'];
+  document.getElementById('extTable').querySelector('tbody').innerHTML=exts.map(([e,c],i)=>
+    `<tr><td><span class="ext-dot" style="background:${colors[i%colors.length]}"></span>${e}</td><td style="color:#aaa">${c} 个</td></tr>`
+  ).join('');
+
+  // Treemap
+  drawTreemap(exts,colors,data.total_bytes);
+
+  // 文件列表
+  document.getElementById('fileCount').textContent=`(${data.files?.length||0} 条)`;
+  const files=(data.files||[]).slice(0,100);
+  document.getElementById('fileList').innerHTML=files.map(f=>
+    `<div class="file-item"><span class="file-path" title="${f.path}">${f.path}</span><span class="file-ext-badge">${f.ext}</span><span class="file-size">${formatSize(f.size)}</span></div>`
+  ).join('');
+}
+
+function drawTreemap(exts,colors,total){
+  const el=document.getElementById('treemap');
+  if(!exts.length){el.innerHTML='<div style="color:#666;text-align:center;padding-top:100px">无数据</div>';return}
+  el.innerHTML='';
+  const W=el.clientWidth,H=el.clientHeight;
+  let x=0,y=0,tw=W,th=H,t=total;
+  let ci=0;
+  for(const [ext,count] of exts){
+    const ratio=count/t;
+    let bw,bh;
+    if(tw>th){bw=Math.max(20,tw*ratio);bh=th}else{bh=Math.max(20,th*ratio);bw=tw}
+    const div=document.createElement('div');
+    div.className='tm-rect';
+    div.style.cssText=`left:${x}px;top:${y}px;width:${bw}px;height:${bh}px;background:${colors[ci%colors.length]}`;
+    div.innerHTML=`${ext}<small>${(ratio*100).toFixed(1)}%</small>`;
+    el.appendChild(div);
+    if(tw>th){x+=bw;tw-=bw}else{y+=bh;th-=bh}
+    t-=count;ci++;
+  }
+}
+
+function formatSize(bytes){
+  if(bytes<1024)return bytes+' B';
+  if(bytes<1048576)return (bytes/1024).toFixed(1)+' KB';
+  if(bytes<1073741824)return (bytes/1048576).toFixed(1)+' MB';
+  return (bytes/1073741824).toFixed(2)+' GB';
+}
+
+function exportCSV(){download('scan.csv',scanDataToCSV())}
+function exportJSON(){download('scan.json',JSON.stringify(scanData,null,2))}
+function saveDB(){alert('数据库功能通过 CLI 访问:\nfile_scanner.exe . 4 --db scan.db')}
+
+function scanDataToCSV(){
+  const lines=['路径,大小(字节),扩展名'];
+  for(const f of scanData.files||[])lines.push(`${f.path},${f.size},${f.ext}`);
+  return '\uFEFF'+lines.join('\n');
+}
+
+function download(name,content){
+  const a=document.createElement('a');
+  a.download=name;a.href=URL.createObjectURL(new Blob([content]));
+  a.click();URL.revokeObjectURL(a.href);
+  if(scanData)scanData.files=[];
+}
+
+function showDemo(){
+  scanData={
+    file_count:156,total_bytes:24567890,error_count:2,elapsed_seconds:0.34,cancelled:false,
+    extensions:{'.cpp':89,'.h':42,'.py':18,'.json':5,'.txt':2},
+    files:Array.from({length:20},(_,i)=>({path:`src/module_${i+1}.cpp`,size:1024*(100+i*10),ext:'.cpp'}))
+  };
+  renderResults(scanData);
+  setStatus('演示模式 — 后端未连接',false);
+}
+
+window.addEventListener('resize',()=>{if(scanData)drawTreemap(Object.entries(scanData.extensions||{}),['#818cf8','#f472b6','#34d399','#fbbf24','#fb923c','#38bdf8','#a78bfa','#f87171'],scanData.total_bytes)});
+</script>
+</body>
+</html>

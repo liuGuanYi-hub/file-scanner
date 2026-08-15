@@ -57,7 +57,11 @@ target_link_libraries(file_scanner PRIVATE scanner_infrastructure)
 
 # GUI 版本 (Win32)
 add_executable(file_scanner_gui WIN32 src/gui_main_win32.cpp)
-target_link_libraries(file_scanner_gui PRIVATE scanner_infrastructure comctl32 shell32 ole32)
+target_link_libraries(file_scanner_gui PRIVATE scanner_infrastructure comctl32 shell32 ole32 dwmapi)
+
+# Web GUI 版本 (现代化浏览器界面 — 玻璃拟态设计)
+add_executable(file_scanner_web WIN32 src/web_gui_main.cpp)
+target_link_libraries(file_scanner_web PRIVATE scanner_infrastructure ws2_32)
 
 # ============================================================
 # 编译选项
@@ -75,6 +79,7 @@ set_scanner_warnings(scanner_application)
 set_scanner_warnings(scanner_infrastructure)
 set_scanner_warnings(file_scanner)
 set_scanner_warnings(file_scanner_gui)
+set_scanner_warnings(file_scanner_web)
 
 if (MINGW)
     # 宽字符入口（Windows Unicode 支持）
@@ -83,6 +88,7 @@ if (MINGW)
     # 静态链接 C++ 标准库和 GCC 运行时
     target_link_options(file_scanner PRIVATE -static-libstdc++ -static-libgcc)
     target_link_options(file_scanner_gui PRIVATE -static-libstdc++ -static-libgcc)
+    target_link_options(file_scanner_web PRIVATE -static-libstdc++ -static-libgcc -municode)
 
     # 复制 libwinpthread-1.dll 到构建目录（clock_gettime64 需要）
     # GCC 链接器无法静态链接 winpthread，需要运行时 DLL
@@ -97,6 +103,18 @@ if (MINGW)
             "F:/msys64/ucrt64/bin/libwinpthread-1.dll"
             $<TARGET_FILE_DIR:file_scanner_gui>
         COMMENT "Copying libwinpthread-1.dll"
+    )
+    add_custom_command(TARGET file_scanner_web POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "F:/msys64/ucrt64/bin/libwinpthread-1.dll"
+            $<TARGET_FILE_DIR:file_scanner_web>
+        COMMENT "Copying libwinpthread-1.dll"
+    )
+    add_custom_command(TARGET file_scanner_web POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/gui"
+            "$<TARGET_FILE_DIR:file_scanner_web>/gui"
+        COMMENT "Copying gui/ directory"
     )
 endif()
 

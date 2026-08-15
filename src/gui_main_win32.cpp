@@ -6,6 +6,7 @@
 #endif
 
 #include <windows.h>
+#include <dwmapi.h>
 #include <commctrl.h>
 #include <objbase.h>
 #include <shlobj.h>
@@ -15,6 +16,21 @@
 #include <cstdint>
 #include <filesystem>
 #include <iomanip>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <utility>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <filesystem>
+#include <iomanip>
+#include <map>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <utility>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -54,13 +70,22 @@ constexpr int IDC_TREEMAP = 1019;
 constexpr UINT_PTR kProgressTimer = 1;
 constexpr UINT WM_SCAN_COMPLETE = WM_APP + 1;
 
-constexpr COLORREF kWindowColor = RGB(245, 247, 250);
-constexpr COLORREF kPanelColor = RGB(232, 240, 254);
-constexpr COLORREF kTitleColor = RGB(30, 64, 115);
-constexpr COLORREF kTextColor = RGB(31, 41, 55);
-constexpr COLORREF kAccentColor = RGB(37, 99, 235);
-constexpr COLORREF kButtonTextColor = RGB(255, 255, 255);
-constexpr COLORREF kInputColor = RGB(255, 255, 255);
+// === 现代 macOS 风格配色 ===
+constexpr COLORREF kBgColor = RGB(242, 242, 247);         // 浅灰背景 (macOS window bg)
+constexpr COLORREF kCardColor = RGB(255, 255, 255);       // 白色卡片
+constexpr COLORREF kTitleColor = RGB(28, 28, 30);         // 深色标题
+constexpr COLORREF kTextColor = RGB(60, 60, 67);          // 正文文字
+constexpr COLORREF kSecondaryText = RGB(142, 142, 147);   // 次要文字
+constexpr COLORREF kAccentColor = RGB(0, 122, 255);       // macOS 蓝
+constexpr COLORREF kAccentHover = RGB(0, 100, 220);       // 悬停蓝
+constexpr COLORREF kButtonTextColor = RGB(255, 255, 255); // 按钮白字
+constexpr COLORREF kInputBg = RGB(246, 246, 250);         // 输入框背景
+constexpr COLORREF kInputBorder = RGB(209, 209, 214);     // 输入框边框
+constexpr COLORREF kProgressTrack = RGB(233, 233, 237);   // 进度条底色
+constexpr COLORREF kProgressFill = RGB(0, 122, 255);      // 进度条填充
+constexpr COLORREF kSeparator = RGB(229, 229, 234);       // 分割线
+constexpr COLORREF kErrorText = RGB(255, 59, 48);         // 红色错误
+constexpr COLORREF kSuccessText = RGB(52, 199, 89);       // 绿色成功
 
 struct GuiState {
     HWND title_label = nullptr;
@@ -83,7 +108,7 @@ struct GuiState {
     HWND extension_list = nullptr;
 
     HBRUSH window_brush = nullptr;
-    HBRUSH panel_brush = nullptr;
+    HBRUSH card_brush = nullptr;
     HBRUSH input_brush = nullptr;
     HFONT title_font = nullptr;
     HFONT section_font = nullptr;
@@ -311,28 +336,60 @@ void draw_button(const DRAWITEMSTRUCT* draw_item) {
     const bool enabled = (draw_item->itemState & ODS_DISABLED) == 0;
     const bool pressed = (draw_item->itemState & ODS_SELECTED) != 0;
 
-    COLORREF fill = is_start_button ? kAccentColor : kPanelColor;
-    if (!enabled) {
-        fill = RGB(203, 213, 225);
-    } else if (pressed && is_start_button) {
-        fill = RGB(29, 78, 216);
+    HDC hdc = draw_item->hDC;
+    RECT rc = draw_item->rcItem;
+    int w = rc.right - rc.left, h = rc.bottom - rc.top;
+
+    // 创建兼容位图实现双缓冲（消除闪烁）
+    HDC memDC = CreateCompatibleDC(hdc);
+    HBITMAP memBM = CreateCompatibleBitmap(hdc, w, h);
+    SelectObject(memDC, memBM);
+
+    // 背景
+    HBRUSH bg = CreateSolidBrush(kBgColor);
+    FillRect(memDC, &rc, bg);
+    DeleteObject(bg);
+
+    // 按钮区域（带 6px 圆角和阴影边距）
+    int margin = 1;
+    RECT br = {rc.left + margin, rc.top + margin,
+               rc.right - margin, rc.bottom - margin};
+    int radius = 14;
+
+    // 按钮填充
+    COLORREF fill = is_start_button ? (pressed ? kAccentHover : kAccentColor) : kCardColor;
+    if (!enabled) fill = RGB(200, 200, 207);
+
+    HBRUSH fillBrush = CreateSolidBrush(fill);
+    HPEN fillPen = CreatePen(PS_SOLID, 0, fill);
+    SelectObject(memDC, fillBrush);
+    SelectObject(memDC, fillPen);
+    RoundRect(memDC, br.left, br.top, br.right, br.bottom, radius, radius);
+    DeleteObject(fillBrush);
+    DeleteObject(fillPen);
+
+    // 白色边框（macOS 风格细线）
+    if (!is_start_button) {
+        HPEN border = CreatePen(PS_SOLID, 1, kInputBorder);
+        SelectObject(memDC, GetStockObject(NULL_BRUSH));
+        SelectObject(memDC, border);
+        RoundRect(memDC, br.left, br.top, br.right, br.bottom, radius, radius);
+        DeleteObject(border);
     }
 
-    HBRUSH brush = CreateSolidBrush(fill);
-    FillRect(draw_item->hDC, &draw_item->rcItem, brush);
-    DeleteObject(brush);
-
-    HBRUSH border_brush = CreateSolidBrush(RGB(148, 163, 184));
-    FrameRect(draw_item->hDC, &draw_item->rcItem, border_brush);
-    DeleteObject(border_brush);
-    SetBkMode(draw_item->hDC, TRANSPARENT);
-    SetTextColor(draw_item->hDC, is_start_button && enabled ? kButtonTextColor : kTextColor);
-    SelectObject(draw_item->hDC, GetStockObject(DEFAULT_GUI_FONT));
+    // 文字
+    SetBkMode(memDC, TRANSPARENT);
+    SetTextColor(memDC, is_start_button && enabled ? kButtonTextColor : kTextColor);
+    SelectObject(memDC, GetStockObject(DEFAULT_GUI_FONT));
 
     wchar_t text[64]{};
     GetWindowTextW(draw_item->hwndItem, text, _countof(text));
-    RECT text_rect = draw_item->rcItem;
-    DrawTextW(draw_item->hDC, text, -1, &text_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(memDC, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+    // 复制到屏幕
+    BitBlt(hdc, rc.left, rc.top, w, h, memDC, rc.left, rc.top, SRCCOPY);
+    DeleteObject(memBM);
+    DeleteDC(memDC);
 }
 
 void browse_for_directory(HWND window, GuiState* state) {
@@ -557,6 +614,19 @@ LRESULT CALLBACK treemap_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// === 强制圆角窗口（兼容 Win10/11）===
+void ApplyRoundedCorners(HWND window) {
+    RECT rc;
+    GetWindowRect(window, &rc);
+    int w = rc.right - rc.left;
+    int h = rc.bottom - rc.top;
+    if (w <= 0 || h <= 0) return;
+    // 16px 圆角，足够明显
+    HRGN region = CreateRoundRectRgn(0, 0, w + 1, h + 1, 16, 16);
+    SetWindowRgn(window, region, TRUE);
+    // 注意：SetWindowRgn 在使用后 region 由系统管理，不要 DeleteObject
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
     if (message == WM_NCCREATE) {
         const auto* create = reinterpret_cast<CREATESTRUCTW*>(l_param);
@@ -568,9 +638,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
 
     switch (message) {
     case WM_CREATE: {
-        state->window_brush = CreateSolidBrush(kWindowColor);
-        state->panel_brush = CreateSolidBrush(kPanelColor);
-        state->input_brush = CreateSolidBrush(kInputColor);
+        state->window_brush = CreateSolidBrush(kBgColor);
+        state->card_brush = CreateSolidBrush(kCardColor);
+        state->input_brush = CreateSolidBrush(kInputBg);
         state->title_font = CreateFontW(
             24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -682,6 +752,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
         ListView_InsertColumn(state->extension_list, 2, &column);
 
         SendMessageW(state->progress_bar, PBM_SETMARQUEE, FALSE, 0);
+        SendMessageW(state->progress_bar, PBM_SETBKCOLOR, 0,
+                     static_cast<LPARAM>(kProgressTrack));
+        SendMessageW(state->progress_bar, PBM_SETBARCOLOR, 0,
+                     static_cast<LPARAM>(kProgressFill));
         SendMessageW(state->title_label, WM_SETFONT, reinterpret_cast<WPARAM>(state->title_font), TRUE);
         SendMessageW(state->result_label, WM_SETFONT, reinterpret_cast<WPARAM>(state->section_font), TRUE);
         set_control_font(state->path_label);
@@ -718,12 +792,25 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
         }
 
         layout_controls(window, state);
+
+        // 强制圆角窗口（Win10+ 通用方案，不依赖 Win11 DWM）
+        ApplyRoundedCorners(window);
+
+        // 启用 DWM 圆角（Windows 11 风格，更平滑）
+        DWM_WINDOW_CORNER_PREFERENCE corner = DWMWCP_ROUND;
+        DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE,
+                              &corner, sizeof(corner));
+        // 启用窗口阴影
+        BOOL enable = TRUE;
+        DwmSetWindowAttribute(window, DWMWA_NCRENDERING_ENABLED,
+                              &enable, sizeof(enable));
         return 0;
     }
 
     case WM_SIZE:
         if (state) {
             layout_controls(window, state);
+            ApplyRoundedCorners(window);
         }
         return 0;
 
@@ -744,8 +831,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
             SetTextColor(dc, control == state->title_label ? kTitleColor : kTextColor);
             if (control == state->status_label) {
                 SetBkMode(dc, OPAQUE);
-                SetBkColor(dc, kPanelColor);
-                return reinterpret_cast<LRESULT>(state->panel_brush);
+                SetBkColor(dc, kCardColor);
+                return reinterpret_cast<LRESULT>(state->card_brush);
             }
             return reinterpret_cast<LRESULT>(state->window_brush);
         }
@@ -755,7 +842,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
         if (state) {
             HDC dc = reinterpret_cast<HDC>(w_param);
             SetTextColor(dc, kTextColor);
-            SetBkColor(dc, kInputColor);
+            SetBkColor(dc, kInputBg);
             return reinterpret_cast<LRESULT>(state->input_brush);
         }
         break;
@@ -777,8 +864,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
             if (custom_draw->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
                 custom_draw->clrText = kTextColor;
                 custom_draw->clrTextBk = (custom_draw->nmcd.dwItemSpec % 2 == 0)
-                                             ? kInputColor
-                                             : RGB(248, 250, 252);
+                                             ? kCardColor
+                                             : RGB(248, 248, 252);
                 return CDRF_NEWFONT;
             }
         }
@@ -823,7 +910,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, LPARAM l
                 state->worker.join();
             }
             DeleteObject(state->window_brush);
-            DeleteObject(state->panel_brush);
+            DeleteObject(state->card_brush);
             DeleteObject(state->input_brush);
             DeleteObject(state->title_font);
             DeleteObject(state->section_font);
