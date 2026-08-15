@@ -120,17 +120,11 @@ h1{
 .ext-table tr:hover td{background:rgba(255,255,255,0.04)}
 .ext-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}
 
-/* Treemap */
+/* Treemap（环形饼图容器） */
 #treemap{height:240px;border-radius:14px;overflow:hidden;
   background:rgba(0,0,0,0.2);margin-top:16px;position:relative}
-.tm-rect{
-  position:absolute;border:2px solid rgba(0,0,0,0.3);
-  display:flex;align-items:flex-start;padding:6px 8px;
-  font-size:11px;font-weight:500;overflow:hidden;white-space:nowrap;
-  transition:transform 0.15s
-}
-.tm-rect:hover{transform:scale(1.02) translateZ(0);z-index:10}
-.tm-rect small{opacity:0.8;margin-left:4px}
+#treemap svg path{transition:opacity .15s;cursor:pointer}
+#treemap svg path:hover{opacity:.75}
 
 /* 文件列表 */
 .file-list{max-height:300px;overflow-y:auto;border-radius:12px;
@@ -296,8 +290,8 @@ function renderResults(data){
     `<tr><td><span class="ext-dot" style="background:${colors[i%colors.length]}"></span>${e}</td><td style="color:#aaa">${c} 个</td></tr>`
   ).join('');
 
-  // Treemap
-  drawTreemap(exts,colors,data.total_bytes);
+  // 环形饼图（按文件数占比）
+  drawDonutChart(exts, colors);
 
   // 文件列表
   document.getElementById('fileCount').textContent=`(${data.files?.length||0} 条)`;
@@ -307,25 +301,41 @@ function renderResults(data){
   ).join('');
 }
 
-function drawTreemap(exts,colors,total){
-  const el=document.getElementById('treemap');
-  if(!exts.length){el.innerHTML='<div style="color:#666;text-align:center;padding-top:100px">无数据</div>';return}
-  el.innerHTML='';
-  const W=el.clientWidth,H=el.clientHeight;
-  let x=0,y=0,tw=W,th=H,t=total;
-  let ci=0;
-  for(const [ext,count] of exts){
-    const ratio=count/t;
-    let bw,bh;
-    if(tw>th){bw=Math.max(20,tw*ratio);bh=th}else{bh=Math.max(20,th*ratio);bw=tw}
-    const div=document.createElement('div');
-    div.className='tm-rect';
-    div.style.cssText=`left:${x}px;top:${y}px;width:${bw}px;height:${bh}px;background:${colors[ci%colors.length]}`;
-    div.innerHTML=`${ext}<small>${(ratio*100).toFixed(1)}%</small>`;
-    el.appendChild(div);
-    if(tw>th){x+=bw;tw-=bw}else{y+=bh;th-=bh}
-    t-=count;ci++;
+function drawDonutChart(exts, colors) {
+  const el = document.getElementById('treemap');
+  if (!exts.length) { el.innerHTML = '<div style="color:#666;text-align:center;padding-top:100px">无数据</div>'; return; }
+  const total = exts.reduce((s, [, c]) => s + c, 0);
+  if (!total) { el.innerHTML = ''; return; }
+
+  // 容器尺寸（保证非 0）
+  const W = Math.max(el.clientWidth, 260), H = Math.max(el.clientHeight, 220);
+  const cx = W / 2, cy = H / 2;
+  const rMid = Math.min(W, H) / 2 - 14;          // 环形中线半径
+  const strokeW = Math.max(30, rMid * 0.42);      // 环带厚度
+
+  // 12 点方向开始顺时针绘制
+  let angle = -Math.PI / 2;
+  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">`;
+  // 背景环（底部圆环，视觉上衬托空隙）
+  svg += `<circle cx="${cx}" cy="${cy}" r="${rMid}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="${strokeW}"/>`;
+  for (let i = 0; i < exts.length; i++) {
+    const [ext, count] = exts[i];
+    const frac = count / total;
+    if (frac <= 0) { continue; }
+    const a2 = angle + frac * 2 * Math.PI;
+    const x1 = cx + rMid * Math.cos(angle), y1 = cy + rMid * Math.sin(angle);
+    const x2 = cx + rMid * Math.cos(a2),  y2 = cy + rMid * Math.sin(a2);
+    const large = frac > 0.5 ? 1 : 0;
+    svg += `<path d="M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${rMid.toFixed(2)} ${rMid.toFixed(2)} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}"` +
+           ` fill="none" stroke="${colors[i % colors.length]}" stroke-width="${strokeW.toFixed(2)}"` +
+           `><title>${ext}: ${count} 个 (${(frac * 100).toFixed(1)}%)</title></path>`;
+    angle = a2;
   }
+  // 中央统计数字
+  svg += `<text x="${cx}" y="${cy - 2}" text-anchor="middle" fill="#e8e8ed" font-size="28" font-weight="700">${total}</text>`;
+  svg += `<text x="${cx}" y="${cy + 18}" text-anchor="middle" fill="#a0a0b8" font-size="12">文件总数</text>`;
+  svg += '</svg>';
+  el.innerHTML = svg;
 }
 
 function formatSize(bytes){
@@ -362,7 +372,7 @@ function showDemo(){
   setStatus('演示模式 — 后端未连接',false);
 }
 
-window.addEventListener('resize',()=>{if(scanData)drawTreemap(Object.entries(scanData.extensions||{}),['#818cf8','#f472b6','#34d399','#fbbf24','#fb923c','#38bdf8','#a78bfa','#f87171'],scanData.total_bytes)});
+window.addEventListener('resize',()=>{if(scanData)drawDonutChart(Object.entries(scanData.extensions||{}),['#818cf8','#f472b6','#34d399','#fbbf24','#fb923c','#38bdf8','#a78bfa','#f87171'])});
 </script>
 </body>
 </html>
