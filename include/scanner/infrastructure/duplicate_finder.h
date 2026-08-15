@@ -35,10 +35,14 @@ class DuplicateFinder {
 public:
     // 扫描目录中的所有文件，返回重复文件组
     // 每个组包含 2 个或以上相同内容的文件
+    //  - cache_db: 可选预哈希缓存数据库路径（SQLite）
+    //    缓存 64KB 预哈希中间结果，二次扫描相同文件跳过 I/O；
+    //    传 nullptr 表示不启用缓存（向后兼容）
     std::vector<DuplicateGroup> find(
         const std::filesystem::path& root,
         std::size_t worker_count = 1,
-        DuplicateMode mode = DuplicateMode::Content);
+        DuplicateMode mode = DuplicateMode::Content,
+        const std::filesystem::path* cache_db = nullptr);
 
 private:
     // 计算文件的 SHA256 哈希

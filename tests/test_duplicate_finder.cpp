@@ -99,4 +99,39 @@ TEST(DuplicateFinder, NoDuplicatesInEmptyDir) {
     EXPECT_TRUE(groups.empty());
 }
 
+TEST(DuplicateFinder, PrehashCacheSecondScanHit) {
+    // 缓存文件路径
+    const fs::path cache_db = "tests/tmp_dupes_cache.db";
+    fs::remove(cache_db);
+
+    DuplicateFinder finder;
+
+    // 第一次扫描：未命中缓存，正常计算
+    auto groups1 = finder.find("tests/tmp_dupes", 2, DuplicateMode::Content, &cache_db);
+    EXPECT_FALSE(groups1.empty());
+
+    // 第二次扫描：缓存命中（文件未变），结果应一致
+    auto groups2 = finder.find("tests/tmp_dupes", 2, DuplicateMode::Content, &cache_db);
+    EXPECT_EQ(groups1.size(), groups2.size());
+
+    // 修改一个文件（mtime/size 变化 → 缓存失效），应重新计算且不崩溃
+    std::ofstream f("tests/tmp_dupes/dir1/same.txt", std::ios::binary | std::ios::trunc);
+    f << "changed content";
+    f.close();
+    auto groups3 = finder.find("tests/tmp_dupes", 2, DuplicateMode::Content, &cache_db);
+    // 不抛异常即可（文件变更后不再构成重复组，结果可能为空）
+    fs::remove(cache_db);
+}
+
+TEST(DuplicateFinder, PrehashCacheDbDoesNotExistCreatesIt) {
+    const fs::path cache_db = "tests/tmp_dupes_cache2.db";
+    fs::remove(cache_db);
+    EXPECT_FALSE(fs::exists(cache_db));
+
+    DuplicateFinder finder;
+    finder.find("tests/tmp_dupes", 2, DuplicateMode::Content, &cache_db);
+    EXPECT_TRUE(fs::exists(cache_db));
+    fs::remove(cache_db);
+}
+
 }  // namespace
