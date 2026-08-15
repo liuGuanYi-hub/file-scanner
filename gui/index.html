@@ -235,6 +235,16 @@ function setStatus(text,spinning=false){
   document.getElementById('spinner').style.display=spinning?'inline-block':'none';
 }
 
+// URL 参数支持：?autoscan=1&path=...&threads=... 加载后自动扫描（便于演示/分享/截图）
+function autoScanFromUrl(){
+  const p=new URLSearchParams(location.search);
+  if(!p.get('autoscan'))return;
+  if(p.get('path'))document.getElementById('path').value=p.get('path');
+  if(p.get('threads'))document.getElementById('threads').value=p.get('threads');
+  startScan();
+}
+document.addEventListener('DOMContentLoaded',autoScanFromUrl);
+
 async function startScan(){
   const path=document.getElementById('path').value.trim();
   const threads=document.getElementById('threads').value||'4';
@@ -322,6 +332,12 @@ function drawDonutChart(exts, colors) {
     const [ext, count] = exts[i];
     const frac = count / total;
     if (frac <= 0) { continue; }
+    // 100% 占比时起止点重合，SVG arc 会退化，改用完整 circle
+    if (frac >= 1 - 1e-9) {
+      svg += `<circle cx="${cx}" cy="${cy}" r="${rMid}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${strokeW.toFixed(2)}"` +
+             `><title>${ext}: ${count} 个 (100.0%)</title></circle>`;
+      continue;
+    }
     const a2 = angle + frac * 2 * Math.PI;
     const x1 = cx + rMid * Math.cos(angle), y1 = cy + rMid * Math.sin(angle);
     const x2 = cx + rMid * Math.cos(a2),  y2 = cy + rMid * Math.sin(a2);

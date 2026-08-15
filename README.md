@@ -24,6 +24,10 @@
 - **Treemap**：GUI 底部可视化面板，按扩展名着色
 - **文件监听**：ReadDirectoryChangesW 实时监听
 - **清理操作**：回收站 / 永久删除
+- **Web GUI**：嵌入式 HTTP 服务 + 浏览器玻璃拟态界面（[截图](docs/screenshots/17-v2-web-gui.png)）
+- **重复检测增强**：NameAndSize 快速模式（文件名+大小零 I/O 分桶）+ 预哈希 SQLite 缓存（二次扫描秒开）
+- **删除策略扩展**：保留最新/最旧/最大/最小 + 参考目录保护
+- **插件化工具**：IScanTool 接口 + ToolRegistry，新增工具零改动现有代码
 
 详细更新见：[CHANGELOG.md](CHANGELOG.md) | 开发计划：[docs/开发计划.md](docs/开发计划.md)
 
@@ -50,7 +54,17 @@
 
 ![GUI 进度条、颜色主题和扩展名统计表格](docs/screenshots/08-gui-progress-theme-table.png)
 
-### v2.0 新功能（截图待捕获）
+### v2.0 新功能
+
+![Web GUI 浏览器界面](docs/screenshots/17-v2-web-gui.png)
+
+启动 `file_scanner_web.exe` 后自动打开浏览器（默认 http://localhost:8899），玻璃拟态深色 UI，支持：
+- `?autoscan=1&path=...&threads=...` URL 参数自动扫描（便于分享/演示）
+- 三级 SHA256 分桶（大小 → 64KB → 完整哈希）
+- 环形饼图展示扩展名占比
+- Web 端导出 CSV / JSON / Word 报告
+
+更多截图（CLI / GUI / 综合）：
 
 | 功能 | 截图 | 捕获命令 |
 |------|------|----------|
